@@ -96,6 +96,34 @@ button.card:active .tile{transform:scale(.97)}
 .card.new{animation:dropIn .7s var(--spring)}
 .note{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--surface);box-shadow:var(--shadow);font-size:13.5px;color:var(--muted)}
 
+/* Starter wardrobe guide: a checklist card that walks a new user through their first five pieces. */
+.guide{margin-top:18px;background:var(--surface);border-radius:24px;padding:20px;box-shadow:var(--shadow);display:grid;gap:14px;animation:rise .5s var(--spring) both}
+.g-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.g-head .eyebrow{margin-bottom:4px}
+.g-head h2{margin:0;font:700 22px/1.15 var(--display);letter-spacing:-.03em;text-wrap:balance}
+.g-bar{height:6px;border-radius:3px;background:var(--tile);overflow:hidden}
+.g-bar i{display:block;height:100%;border-radius:3px;background:var(--ink);transition:width .7s var(--ease)}
+.g-steps{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.g-steps li{display:flex;align-items:center;gap:12px;padding:8px;border-radius:16px}
+.g-steps li.cur{background:var(--tile)}
+.g-ic{flex:none;width:44px;height:44px;border-radius:12px;background:var(--tile);display:grid;place-items:center;overflow:hidden}
+.g-ic svg{width:100%;height:100%}
+.g-steps li.cur .g-ic{background:var(--surface)}
+.g-steps li.ok .g-ic{background:var(--ink);color:var(--on-ink)}
+.g-steps li.ok .g-ic svg{width:20px;height:20px}
+.g-txt{flex:1;min-width:0;display:grid;gap:2px;font-size:14.5px}
+.g-txt span{color:var(--muted);font-size:13px}
+.g-steps li.ok b{color:var(--muted);font-weight:500;text-decoration:line-through}
+.g-ready{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:16px;background:var(--tile);font-size:14px}
+.g-ready svg{width:18px;height:18px;flex:none}
+.g-ready span{flex:1;min-width:160px}
+.g-row{display:flex;gap:8px;flex-wrap:wrap}
+.tips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.starter{display:grid;gap:8px}
+.starter > div{display:flex;align-items:center;gap:12px;padding:10px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow);animation:rise .5s var(--spring) both}
+.starter b{display:block;font-size:15px}
+.starter .d{color:var(--muted);font-size:13px}
+
 /* Style me */
 .panel{background:var(--surface);border-radius:24px;padding:22px;box-shadow:var(--shadow);display:grid;gap:18px}
 .label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
@@ -336,6 +364,24 @@ const DEMO = [
   {id:'d11',name:'Black loafers',category:'shoes',kind:'loafer',hex:'#1d1d1f',color:'black',style:'smart',occasions:['work','dinner','date']},
   {id:'d12',name:'Tan shoulder bag',category:'accessory',kind:'bag',hex:'#a9774b',color:'tan',style:'smart',occasions:['work','dinner','date','weekend']}
 ];
+const SAMPLE_IDS = new Set(DEMO.map(x=>x.id));
+const ownItems = () => state.items.filter(i=>!SAMPLE_IDS.has(i.id));
+// Starter wardrobe: five everyday pieces a new user adds one at a time.
+const STARTER = [
+  {cat:'top',       also:[],        t:'A top you wear a lot',    d:'A tee, shirt or knit you reach for every week.'},
+  {cat:'bottom',    also:['dress'], t:'Something for your legs', d:'Jeans, trousers or a skirt. A dress counts too.'},
+  {cat:'shoes',     also:[],        t:'Your go-to shoes',        d:'The pair you wear most days.'},
+  {cat:'outerwear', also:[],        t:'A layer',                 d:'A jacket, blazer, cardigan or coat.'},
+  {cat:'accessory', also:[],        t:'A bag or accessory',      d:'It finishes the look.'},
+];
+const lower1 = s => s[0].toLowerCase() + s.slice(1);
+function starterState(){
+  const own = ownItems(), has = c => own.some(i=>i.category===c);
+  const done = STARTER.map(s=>has(s.cat) || s.also.some(has));
+  return {done, n:done.filter(Boolean).length, next:done.indexOf(false), ready:has('shoes') && (has('dress') || (has('top') && has('bottom')))};
+}
+const guideOn = () => !!state.profile && !state.profile.guest && state.profile.guide === 'on';
+const PHOTO_TIPS = ['Plain background','One piece per photo','Good daylight','Lay it flat or hang it up'].map(t=>`<span class="tag">${t}</span>`).join('');
 const CATS = {top:'Tops',bottom:'Bottoms',dress:'Dresses',outerwear:'Layers',shoes:'Shoes',accessory:'Bags & more'};
 const CAT_ONE = {top:'Top',bottom:'Bottom',dress:'Dress',outerwear:'Layer',shoes:'Shoes',accessory:'Accessory'};
 const KIND_FOR = {top:'tee',bottom:'trousers',dress:'dress',outerwear:'blazer',shoes:'sneaker',accessory:'bag'};
@@ -368,7 +414,7 @@ const firstName = m => (m.first_name || String(m.full_name || m.name || '').spli
 const lastName = m => (m.last_name || String(m.full_name || m.name || '').split(' ').slice(1).join(' ') || '').slice(0,40);
 function profileFromUser(u){
   const m = u.user_metadata || {};
-  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), last:lastName(m), email:u.email||'', vibes:m.vibes||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guest:false};
+  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), last:lastName(m), email:u.email||'', vibes:m.vibes||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guide:m.guide==='on' ? 'on' : 'off', guest:false};
 }
 function authErr(e, fallback){
   const c = e?.code || '', s = e?.status;
@@ -426,9 +472,11 @@ async function cloudLoad(u){
   if (cloud !== u) return;
   if (it.error || of.error){ cloud = null; console.warn('Wardrobe tables not reachable yet; keeping it on this device.', it.error || of.error); return; }
   if (!it.data.length && !of.data.length && !u.user_metadata?.wardrobe_ready){
-    // First sign-in on this account: move what's on this device into it.
+    // First sign-in on this account: move the person's own pieces from this device into it (not the samples).
+    const own = ownItems(), keep = state.saved.filter(s=>s.itemIds.every(id=>own.some(i=>i.id===id)));
+    state.items = own; state.saved = keep; persist(); render(); paintCount();
     try{
-      await cloudAddItems(state.items); await cloudAddOutfits(state.saved);
+      await cloudAddItems(own); await cloudAddOutfits(keep);
       await sb.auth.updateUser({data:{wardrobe_ready:true}});
       persist();
     }catch(e){ toast('Couldn’t copy your wardrobe to your account. Try again later.'); }
@@ -562,20 +610,38 @@ function render(){
   paintCount();
 }
 
+function guideHTML(){
+  const {done, n, next, ready} = starterState(), all = n === STARTER.length;
+  const title = all ? 'Your starter wardrobe is ready.' : n === 0 ? 'Let’s add your first piece.' : `Next: ${lower1(STARTER[next].t)}.`;
+  return `<div class="guide" id="guide">
+    <div class="g-head"><div><p class="eyebrow">Starter wardrobe · ${n} of ${STARTER.length}</p><h2>${title}</h2></div>
+      ${all ? '' : '<button class="link" data-act="guidehide">Hide guide</button>'}</div>
+    <div class="g-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${STARTER.length}" aria-valuenow="${n}"><i style="width:${n/STARTER.length*100}%"></i></div>
+    ${ready && !all ? `<div class="g-ready">${ICON.spark}<span>You have enough for a first outfit. Want to see it?</span><button class="btn sm" data-act="firststyle">Style my first outfit</button></div>` : ''}
+    ${all ? `<p class="sub" style="margin:0">Five pieces in. Style an outfit now, and keep adding pieces whenever you like. The more you add, the better the outfits get.</p>
+      <div class="g-row"><button class="btn" data-act="firststyle">${ICON.spark}Style me</button><button class="btn ghost" data-act="guidehide">Done</button></div>`
+    : `<ol class="g-steps">${STARTER.map((s,k)=>`<li class="${done[k] ? 'ok' : k === next ? 'cur' : ''}">
+        <span class="g-ic">${done[k] ? ICON.check : garment(KIND_FOR[s.cat], '#cfcac1')}</span>
+        <span class="g-txt"><b>${s.t}</b>${k === next ? `<span>${s.d}</span>` : ''}</span>
+        ${done[k] ? '' : `<button class="btn sm${k === next ? '' : ' ghost'}" data-guide="${k}">Add</button>`}</li>`).join('')}</ol>`}
+  </div>`;
+}
 function viewWardrobe(){
   const cats = ['all', ...Object.keys(CATS).filter(c=>state.items.some(i=>i.category===c))];
   const list = state.items.filter(i=>state.filter==='all'||i.category===state.filter);
-  const demo = state.items.some(i=>i.id.startsWith('d'));
+  const demo = state.items.some(i=>SAMPLE_IDS.has(i.id)), guide = guideOn();
+  const count = state.items.length ? `${state.items.length} piece${state.items.length>1?'s':''}. Add a photo and AI labels it for you.` : 'No pieces yet. Add a photo of something you own to get started.';
   return `<section>
-    <div class="head"><div>${hello()}<h1>Your wardrobe</h1><p class="sub">${state.items.length} pieces. Add a photo and AI labels it for you.</p></div>
+    <div class="head"><div>${hello()}<h1>Your wardrobe</h1><p class="sub">${count}</p></div>
       <button class="btn" data-act="add">${ICON.plus}Add item</button></div>
-    ${demo?`<div class="note">${ICON.spark.replace('<svg','<svg width="18" height="18"')}<span>These are sample pieces so you can try styling right away. Add your own photos anytime.</span></div>`:''}
+    ${guide ? guideHTML() : ''}
+    ${demo?`<div class="note"${guide?' style="margin-top:14px"':''}>${ICON.spark.replace('<svg','<svg width="18" height="18"')}<span>These are sample pieces so you can try styling right away. Add your own photos anytime.</span>${ownItems().length?'<button class="link" data-act="nosamples">Remove samples</button>':''}</div>`:''}
     <div class="chips" style="margin-top:18px">${cats.map(c=>`<button class="chip" data-filter="${c}" aria-pressed="${state.filter===c}">${c==='all'?'All':CATS[c]}</button>`).join('')}</div>
     <div class="grid">
       <button class="card add" data-act="add" aria-label="Add item"><div class="tile"><span class="plus">${ICON.plus}</span></div><span class="cname">Add item</span><span class="cmeta">Photo or screenshot</span></button>
       ${list.map(i=>`<button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>`).join('')}
     </div>
-    ${list.length===0?`<div class="empty"><b>Nothing here yet</b><span>Add a piece to this category.</span></div>`:''}
+    ${list.length===0 && !(guide && state.filter==='all')?`<div class="empty"><b>Nothing here yet</b><span>${state.filter==='all' ? 'Add a photo of something you own.' : 'Add a piece to this category.'}</span></div>`:''}
     <div class="foot"><button class="link" data-act="reset">Reset to sample wardrobe</button></div>
   </section>`;
 }
@@ -663,6 +729,10 @@ function clean(outfits, needFind){
 let capTimer;
 async function runStyle(){
   const findMode = state.mode==='find';
+  if (!findMode && !canOutfit()){
+    state.results = null; state.error = 'To make an outfit, add at least a top and a bottom (or a dress), plus shoes. Your wardrobe page shows what to add next.';
+    return render();
+  }
   const prev = state.results ? state.results.outfits.map(o=>o.itemIds.map(id=>byId(id)?.name).join(' + ')) : [];
   state.loading = true; state.error=''; render();
   const caps = ['Reading your wardrobe','Pairing colors','Checking proportions','Adding finishing touches'];
@@ -747,9 +817,11 @@ function closeSheet(){
 $('#scrim').addEventListener('click', closeSheet);
 addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
 
-function addSheet(){
-  draft = {step:'pick'};
-  openSheet(`<h2>Add a piece</h2><p class="sub">A photo on a plain background works best.</p><div id="addBody">${addBody()}</div>`);
+function addSheet(k){
+  const s = STARTER[k];
+  draft = {step:'pick', preset:s ? s.cat : null};
+  openSheet(s ? `<p class="eyebrow">Starter wardrobe · step ${k+1} of ${STARTER.length}</p><h2>Add ${lower1(s.t)}</h2><p class="sub">${s.d}</p><div class="tips">${PHOTO_TIPS}</div><div id="addBody">${addBody()}</div>`
+    : `<h2>Add a piece</h2><p class="sub">A photo on a plain background works best.</p><div id="addBody">${addBody()}</div>`);
 }
 function addBody(){
   if (draft.step==='pick') return `<label class="drop" id="addDrop" for="addFile" style="margin-top:16px">
@@ -773,7 +845,8 @@ function addBody(){
 function paintAdd(){ const b=$('#addBody'); if(b) b.innerHTML = addBody(); }
 async function takeAddFile(file){
   if (!file || !file.type.startsWith('image/')) return toast('Pick an image file');
-  draft = {step:'reading', img: await shrink(file), name:'', category:'top', color:'', hex:'#cccccc', style:'casual', occasions:[], ai:false};
+  const preset = draft?.preset;
+  draft = {step:'reading', img: await shrink(file), name:'', category:preset||'top', preset, color:'', hex:'#cccccc', style:'casual', occasions:[], ai:false};
   paintAdd();
   if (aiOn() && canImages){
     try{
@@ -795,13 +868,39 @@ function saveItem(){
   const d = draft; d.name = $('#fName').value.trim(); d.category=$('#fCat').value; d.color=$('#fColor').value.trim(); d.hex=$('#fHex').value;
   if (!d.name){ $('#fName').focus(); return toast('Give it a name'); }
   const item = {id:'u'+Date.now().toString(36), name:d.name, category:d.category, color:d.color||'—', hex:d.hex, style:d.style, occasions:d.occasions.length?d.occasions:['weekend'], img:d.img, _new:true};
+  const before = guideOn() && starterState();
   state.items.unshift(item); persist(); closeSheet();
   cloudDo(()=>cloudAddItems([item]).then(persist));
   state.filter='all'; if(state.view!=='wardrobe') go('wardrobe'); else render();
   setTimeout(()=>{ delete item._new; }, 800);
-  toast('Added to your wardrobe', true);
+  if (!before) return toast('Added to your wardrobe', true);
+  // Starter guide: cheer the step and point at the next one.
+  const after = starterState();
+  if (after.n === STARTER.length && before.n < STARTER.length) toast('That’s all five. Your starter wardrobe is ready!', true);
+  else if (after.ready && !before.ready) toast('Nice! You can style your first outfit now.', true);
+  else if (after.next >= 0) toast(`Added! Next: ${lower1(STARTER[after.next].t)}.`, true);
+  else toast('Added to your wardrobe', true);
+  requestAnimationFrame(()=>$('#guide')?.scrollIntoView({behavior:'smooth', block:'nearest'}));
 }
 
+function setGuide(v){
+  if (!state.profile) return;
+  state.profile.guide = v; persist();
+  if (cloud) sb.auth.updateUser({data:{guide:v}});
+  else if (state.profile.test) saveTestAccount(state.profile.email, {guide:v});
+}
+function addSamples(){
+  const add = DEMO.filter(x=>!byId(x.id)).map(x=>({...x}));
+  state.items = [...state.items, ...add]; persist(); render();
+  cloudDo(()=>cloudAddItems(add));
+}
+function removeSamples(){
+  const gone = state.items.filter(i=>SAMPLE_IDS.has(i.id)), lost = state.saved.filter(s=>s.itemIds.some(id=>SAMPLE_IDS.has(id)));
+  state.items = ownItems(); state.saved = state.saved.filter(s=>!lost.includes(s)); state.results = null; persist(); render(); paintCount();
+  cloudDo(async ()=>{ await cloudRemove('wardrobe_items', gone.map(i=>i.id), []); await cloudRemove('saved_outfits', lost.map(s=>s.id), lost.map(s=>s.find?.photo)); });
+  toast('Sample pieces removed');
+}
+function canOutfit(){ const has = c => state.items.some(i=>i.category===c); return has('shoes') && (has('dress') || (has('top') && has('bottom'))); }
 function detailSheet(id){
   const i = byId(id); if(!i) return;
   openSheet(`<div class="preview">${visual(i)}</div><h2>${esc(i.name)}</h2>
@@ -881,7 +980,7 @@ const GLOGO = 'images/google.png';
 let ob = null;
 function startOnboarding(step, editing){
   const p = state.profile && !state.profile.guest ? state.profile : {};
-  ob = {step, phase:'email', known:false, dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', last:p.last||'', email:p.email||'', vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
+  ob = {step, phase:'email', known:false, dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', last:p.last||'', email:p.email||'', guide:p.guide, vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
   const el = $('#auth'); el.classList.remove('leave'); el.hidden = false; document.body.classList.add('locked');
   paintAuth();
 }
@@ -891,12 +990,16 @@ function endAuth(){
   ob = null; paintMe(); render(); requestAnimationFrame(movePill);
 }
 function testAccounts(){ try{ return JSON.parse(localStorage.getItem('stylist.testAccounts')||'{}'); }catch(e){ return {}; } }
+function saveTestAccount(email, fields){
+  try{ const all = testAccounts(); all[email] = {...all[email], ...fields}; localStorage.setItem('stylist.testAccounts', JSON.stringify(all)); }
+  catch(e){ toast('Test mode storage is full. Remove a few photos.'); }
+}
 function saveProfile(){
   const p = state.profile = {...ob.p, guest:false, onboarded:true, test:testAuth};
   if (p.occasions.length) state.occasion = p.occasions[0];
   persist();
-  if (testAuth){ try{ localStorage.setItem('stylist.testAccounts', JSON.stringify({...testAccounts(), [p.email]:p})); }catch(e){} return; }
-  sb?.auth.updateUser({data:{first_name:p.name, last_name:p.last, vibes:p.vibes, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true}})
+  if (testAuth) return saveTestAccount(p.email, p);
+  sb?.auth.updateUser({data:{first_name:p.name, last_name:p.last, vibes:p.vibes, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true, ...(p.guide ? {guide:p.guide} : {})}})
     .then(({error})=>{ if (error) toast('Couldn’t save your style to your account. Try again later.'); });
 }
 const MARK = '<span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>';
@@ -938,7 +1041,18 @@ function paintAuth(){
       <h1 class="big">You’re all set${displayName(p)?', '+esc(displayName(p)):''}.</h1>
       <p class="sub">${p.vibes.length||p.colors.length ? 'Every outfit will now lean toward your style.' : 'You can set your style anytime from your profile.'}</p>
       ${tags.length?`<div class="tags" style="justify-content:center;margin-top:4px">${tags.join('')}</div>`:''}
-      </div><div class="ob-foot"><button class="btn wide" data-ob="finish">See my wardrobe</button></div></div>`;
+      </div><div class="ob-foot"><button class="btn wide" data-ob="tostarter">Continue</button></div></div>`;
+    el.scrollTop = 0; return;
+  }
+  if (o.step === 'starter'){
+    el.innerHTML = `<div class="auth-in"><div class="ob-body step-in">
+      <p class="eyebrow">One more thing</p>
+      <h1 class="big">Let’s build your wardrobe.</h1>
+      <p class="sub">Start with 5 everyday pieces. Each one takes a photo and a few seconds, and then we can put outfits together from them.</p>
+      <div class="starter">${STARTER.map((s,k)=>`<div style="animation-delay:${.08+k*.06}s"><span class="g-ic">${garment(KIND_FOR[s.cat], '#cfcac1')}</span><span><b>${s.t}</b><span class="d">${s.d}</span></span></div>`).join('')}</div>
+      <div><div class="label" style="margin-top:6px">For the best photos</div><div class="tips">${PHOTO_TIPS}</div></div>
+      </div><div class="ob-foot"><button class="btn wide" data-ob="firstpiece">${ICON.plus}Add my first piece</button>
+      <button class="link center" style="display:block;margin:12px auto 0" data-ob="samples">Try it with sample pieces first</button></div></div>`;
     el.scrollTop = 0; return;
   }
   const i = STEPS.indexOf(o.step), last = i === STEPS.length-1;
@@ -1015,7 +1129,7 @@ async function testVerify(v){
   await wait(600);
   if (v !== ob.code) return {error:{code:'otp_expired'}};
   const a = testAccounts()[ob.p.email];
-  const meta = a ? {first_name:a.name, last_name:a.last, vibes:a.vibes, occasions:a.occasions, colors:a.colors, avoid:a.avoid, onboarded:true} : {};
+  const meta = a ? {first_name:a.name, last_name:a.last, vibes:a.vibes, occasions:a.occasions, colors:a.colors, avoid:a.avoid, guide:a.guide, onboarded:true} : {};
   return {data:{user:{email:ob.p.email, user_metadata:meta, app_metadata:{provider:'email'}}}};
 }
 async function checkCode(){
@@ -1033,7 +1147,11 @@ async function checkCode(){
     g.classList.add('ok'); otpBoxes().forEach(i=>i.disabled = true); btn.innerHTML = ICON.check + 'Email verified';
     clearInterval(resendTimer);
     setTimeout(()=>{ if (!ob) return;
-      if (acc.onboarded) return signInAs(acc);
+      if (acc.onboarded){
+        const a = testAuth && testAccounts()[acc.email];
+        if (a?.items){ state.items = a.items; state.saved = a.saved || []; state.results = null; paintCount(); }
+        return signInAs(acc);
+      }
       // Whatever the button said, someone who hasn't finished onboarding continues it here.
       ob.p = {...ob.p, provider:acc.provider, name:acc.name, last:acc.last, email:acc.email}; ob.step = 'name'; ob.dir = 1; paintAuth(); }, 900);
     return;
@@ -1096,6 +1214,11 @@ function nextStep(){
   }
   const i = STEPS.indexOf(ob.step);
   if (i < STEPS.length-1){ ob.step = STEPS[i+1]; ob.dir = 1; return paintAuth(); }
+  if (!ob.editing){
+    // A brand-new account starts with only the person's own pieces and the starter guide switched on.
+    ob.p.guide = 'on';
+    state.items = ownItems(); state.saved = state.saved.filter(s=>s.itemIds.every(id=>byId(id))); state.results = null;
+  }
   saveProfile();
   if (ob.editing){ endAuth(); toast('Preferences updated', true); return; }
   ob.step = 'done'; ob.dir = 1; paintAuth();
@@ -1146,6 +1269,9 @@ $('#auth').addEventListener('click', e=>{
   }
   if (d.ob === 'next' || d.ob === 'skip') return nextStep();
   if (d.ob === 'finish') return endAuth();
+  if (d.ob === 'tostarter'){ ob.step = 'starter'; ob.dir = 1; return paintAuth(); }
+  if (d.ob === 'firstpiece'){ endAuth(); setTimeout(()=>addSheet(0), 450); return; }
+  if (d.ob === 'samples'){ addSamples(); endAuth(); return toast('Sample pieces added. Swap in your own anytime.', true); }
   if (d.vibe){
     const on = ob.p.vibes.includes(d.vibe);
     if (!on && ob.p.vibes.length >= 3){ nudge(t); const h = $('#vibeHint'); h.classList.add('flash'); setTimeout(()=>h.classList.remove('flash'), 1000); return; }
@@ -1167,12 +1293,19 @@ document.addEventListener('click', async e=>{
   if (a.act==='signout'){
     if (t.dataset.armed){
       // Don't leave an account's wardrobe on a shared device after signing out.
-      if (cloud){ cloud = null; state.items = DEMO.map(x=>({...x})); state.saved = []; state.results = null; render(); paintCount(); }
+      // (A test-mode account keeps its wardrobe with its test account, like a real account keeps it in Supabase.)
+      const p = state.profile;
+      if (p?.test) saveTestAccount(p.email, {items:state.items, saved:state.saved});
+      if (cloud || (p && !p.guest)){ cloud = null; state.items = DEMO.map(x=>({...x})); state.saved = []; state.results = null; render(); paintCount(); }
       sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('email'), 250); return;
     }
     t.dataset.armed='1'; t.textContent='Tap again to sign out'; return;
   }
   if (a.act==='add') return addSheet();
+  if (a.guide!==undefined) return addSheet(+a.guide);
+  if (a.act==='guidehide'){ const all = starterState().n === STARTER.length; setGuide('off'); render(); return all ? undefined : toast('Guide hidden. Add pieces anytime with “Add item”.'); }
+  if (a.act==='firststyle'){ state.mode='occasion'; state.results=null; state.error=''; go('style'); return runStyle(); }
+  if (a.act==='nosamples') return removeSamples();
   if (a.act==='close') return closeSheet();
   if (a.act==='saveItem') return saveItem();
   if (a.act==='style') return runStyle();
