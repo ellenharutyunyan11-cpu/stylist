@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Stylist</title>
+<style>
+/* Layout: one calm column, sticky glass header with a sliding segmented control; content is grids of soft tiles. */
+:root{
+  --bg:#f5f5f4; --surface:#ffffff; --tile:#ecebe8; --fg:#0b0b0c; --muted:#6e6e73;
+  --line:rgba(0,0,0,.08); --ink:#0b0b0c; --on-ink:#ffffff; --glass:rgba(245,245,244,.78);
+  --heart:#ff375f; --ok:#30a46c; --warn:#c2410c;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.06);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --r:20px; --spring:cubic-bezier(.34,1.56,.64,1); --ease:cubic-bezier(.22,.61,.36,1);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#111113; --tile:#1c1c1e; --fg:#f5f5f7; --muted:#8e8e93;
+  --line:rgba(255,255,255,.1); --ink:#f5f5f7; --on-ink:#000000; --glass:rgba(0,0,0,.72);
+  --shadow:0 0 0 1px rgba(255,255,255,.06); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#111113; --tile:#1c1c1e; --fg:#f5f5f7; --muted:#8e8e93;
+  --line:rgba(255,255,255,.1); --ink:#f5f5f7; --on-ink:#000000; --glass:rgba(0,0,0,.72);
+  --shadow:0 0 0 1px rgba(255,255,255,.06); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--font);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--glass)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:12px}
+
+.wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* Header */
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--glass);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font:600 20px/1 var(--display);letter-spacing:-.03em}
+.mark{width:28px;height:28px;border-radius:9px;background:var(--ink);display:grid;place-items:center}
+.mark svg{width:16px;height:16px}
+.ai{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding:4px 10px;border-radius:99px;background:var(--tile)}
+.ai i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.ai.on i{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 25%,transparent)}
+.ai.wait i{animation:blink 1s infinite}
+
+.seg{position:relative;display:flex;background:var(--tile);border-radius:12px;padding:3px;gap:2px}
+.seg button{position:relative;z-index:1;padding:7px 16px;border-radius:9px;font-size:14px;font-weight:500;color:var(--muted);transition:color .25s;white-space:nowrap}
+.seg button[aria-selected="true"]{color:var(--fg)}
+.seg .pill{position:absolute;top:3px;bottom:3px;left:0;width:0;border-radius:9px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12);transition:transform .45s var(--spring),width .45s var(--spring)}
+.badge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--ink);color:var(--on-ink);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.badge.bump{animation:bump .5s var(--spring)}
+.badge[hidden]{display:none!important}
+
+main{padding-block:28px 96px}
+.view{animation:viewIn .5s var(--ease)}
+h1{font:700 clamp(28px,5vw,40px)/1.05 var(--display);letter-spacing:-.035em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:6px 0 0;max-width:60ch}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:99px;background:var(--ink);color:var(--on-ink);font-weight:600;font-size:15px;transition:transform .2s var(--spring),opacity .2s}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.35;cursor:default;transform:none}
+.btn.ghost{background:var(--tile);color:var(--fg)}
+.btn.sm{height:36px;padding:0 14px;font-size:14px}
+.btn svg{width:18px;height:18px}
+.link{color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:3px}
+
+/* Chips */
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{height:34px;padding:0 14px;border-radius:99px;background:var(--tile);font-size:14px;font-weight:500;transition:background .25s,color .25s,transform .2s var(--spring)}
+.chip:active{transform:scale(.94)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--on-ink)}
+.tag{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:99px;background:var(--tile);font-size:12.5px;color:var(--fg)}
+.dot{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(127,127,127,.4)}
+
+/* Wardrobe grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-top:18px}
+.card{position:relative;display:flex;flex-direction:column;gap:8px;text-align:left;min-width:0}
+.tile{position:relative;aspect-ratio:1;max-width:100%;border-radius:var(--r);background:var(--tile);overflow:hidden;display:grid;place-items:center;transition:transform .35s var(--spring),box-shadow .35s}
+.tile svg.g{width:72%;height:72%;transition:transform .5s var(--spring)}
+.tile img{width:100%;height:100%;object-fit:cover}
+.tile img.cut,.preview img.cut{object-fit:contain;padding:12%;filter:drop-shadow(0 6px 10px rgba(0,0,0,.12));transition:transform .5s var(--spring)}
+.collage .tile img.cut{padding:10%}
+button.card:hover .tile img.cut{transform:scale(1.06) rotate(-2deg)}
+button.card:hover .tile{transform:translateY(-3px);box-shadow:var(--shadow)}
+button.card:hover .tile svg.g{transform:scale(1.06) rotate(-2deg)}
+button.card:active .tile{transform:scale(.97)}
+.cname{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmeta{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);margin-top:-4px}
+.add .tile{background:transparent;border:1.5px dashed color-mix(in srgb,var(--muted) 55%,transparent)}
+.add .plus{width:48px;height:48px;border-radius:50%;background:var(--ink);color:var(--on-ink);display:grid;place-items:center;transition:transform .4s var(--spring)}
+.add:hover .plus{transform:rotate(90deg) scale(1.08)}
+.card.new{animation:dropIn .7s var(--spring)}
+.note{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--surface);box-shadow:var(--shadow);font-size:13.5px;color:var(--muted)}
+
+/* Style me */
+.panel{background:var(--surface);border-radius:24px;padding:22px;box-shadow:var(--shadow);display:grid;gap:18px}
+.label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
+.field{width:100%;height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);outline:none;transition:border-color .2s,box-shadow .2s}
+.field:focus{border-color:var(--ink);box-shadow:0 0 0 4px color-mix(in srgb,var(--ink) 10%,transparent)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.drop{display:flex;align-items:center;gap:16px;padding:16px;border-radius:18px;border:1.5px dashed color-mix(in srgb,var(--muted) 55%,transparent);cursor:pointer;transition:background .25s,border-color .25s}
+.drop:hover,.drop.over{background:var(--tile);border-color:var(--ink)}
+.drop .ic{width:52px;height:52px;flex:none;border-radius:14px;background:var(--tile);display:grid;place-items:center;overflow:hidden}
+.drop .ic img{width:100%;height:100%;object-fit:cover}
+.drop b{display:block;font-weight:600}
+.drop span{color:var(--muted);font-size:13.5px}
+.sr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+.results{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:22px}
+.look{background:var(--surface);border-radius:24px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;animation:rise .6s var(--spring) both;min-width:0}
+.collage{display:grid;grid-template-columns:repeat(var(--n,3),1fr);gap:6px}
+.collage .tile{border-radius:14px}
+.collage .tile.find::after{content:"New find";position:absolute;left:6px;top:6px;font-size:10.5px;font-weight:600;padding:3px 7px;border-radius:99px;background:var(--ink);color:var(--on-ink)}
+.lhead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.lhead h3{margin:0;font:600 17px/1.25 var(--display);letter-spacing:-.02em}
+.why{margin:0;color:var(--muted);font-size:14px}
+.pieces{display:flex;gap:6px;flex-wrap:wrap}
+
+.heart{position:relative;width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--tile);transition:transform .2s var(--spring)}
+.heart:active{transform:scale(.88)}
+.heart svg{width:20px;height:20px;fill:none;stroke:var(--fg);stroke-width:1.8;transition:fill .2s,stroke .2s}
+.heart[aria-pressed="true"] svg{fill:var(--heart);stroke:var(--heart);animation:pop .45s var(--spring)}
+.burst{position:absolute;inset:0;pointer-events:none}
+.burst i{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--heart);animation:fly .6s var(--ease) forwards}
+
+.skel{background:var(--surface);border-radius:24px;padding:14px;box-shadow:var(--shadow);display:grid;gap:12px}
+.shim{border-radius:14px;background:linear-gradient(100deg,var(--tile) 30%,color-mix(in srgb,var(--tile) 60%,var(--surface)) 50%,var(--tile) 70%);background-size:300% 100%;animation:shimmer 1.4s linear infinite}
+.thinking{display:flex;align-items:center;gap:10px;color:var(--muted);margin-top:22px;font-size:14px}
+.dots{display:inline-flex;gap:4px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--c,var(--fg));animation:bounce 1s infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+.caption{transition:opacity .3s}
+
+.empty{display:grid;place-items:center;text-align:center;gap:10px;padding:60px 16px;color:var(--muted)}
+.empty .big{width:72px;height:72px;border-radius:22px;background:var(--tile);display:grid;place-items:center;animation:float 3s ease-in-out infinite}
+.empty .big svg{width:34px;height:34px;stroke:var(--fg);fill:none;stroke-width:1.6}
+.empty b{color:var(--fg);font-size:17px}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.35);opacity:0;transition:opacity .3s}
+.scrim.open{opacity:1}
+.sheet{position:fixed;z-index:41;left:50%;bottom:0;width:min(520px,100%);max-height:92vh;overflow:auto;background:var(--surface);border-radius:28px 28px 0 0;padding:10px max(20px,env(safe-area-inset-left,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-right,0px));transform:translate(-50%,105%);transition:transform .5s var(--spring)}
+.sheet.open{transform:translate(-50%,0)}
+@media (min-width:700px){.sheet{bottom:auto;top:50%;border-radius:28px;transform:translate(-50%,-44%) scale(.96);opacity:0;transition:transform .45s var(--spring),opacity .25s}.sheet.open{transform:translate(-50%,-50%);opacity:1}}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 14px}
+.sheet h2{margin:0 0 4px;font:700 22px/1.2 var(--display);letter-spacing:-.03em}
+.x{position:absolute;right:14px;top:14px;width:32px;height:32px;border-radius:50%;background:var(--tile);display:grid;place-items:center;transition:transform .25s var(--spring)}
+.x:hover{transform:rotate(90deg)}
+.x svg{width:14px;height:14px;stroke:var(--fg);stroke-width:2.2}
+.preview{position:relative;aspect-ratio:1;width:min(300px,100%);max-width:100%;margin:14px auto;border-radius:22px;background:var(--tile);overflow:hidden;display:grid;place-items:center}
+.preview img{width:100%;height:100%;object-fit:cover}
+.preview svg.g{width:70%;height:70%}
+.scan{position:absolute;left:0;right:0;height:40%;background:linear-gradient(180deg,transparent,rgba(255,255,255,.55),transparent);animation:scan 1.6s ease-in-out infinite;mix-blend-mode:overlay}
+.form{display:grid;gap:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick{display:flex;gap:8px;align-items:center}
+.pick input[type=color]{width:44px;height:44px;border:0;border-radius:12px;padding:0;background:none;flex:none}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tags .tag{animation:rise .5s var(--spring) both}
+.danger{color:var(--warn)}
+
+/* Profile button */
+.right{display:flex;align-items:center;gap:10px;min-width:0}
+.me{width:36px;height:36px;flex:none;border-radius:50%;background:var(--ink);color:var(--on-ink);font-weight:600;font-size:15px;display:grid;place-items:center;transition:transform .25s var(--spring)}
+.me:hover{transform:scale(1.06)}.me:active{transform:scale(.92)}
+.me svg{width:18px;height:18px}
+.me.xl{width:56px;height:56px;font-size:22px;cursor:default;transform:none}
+.prof{display:flex;align-items:center;gap:14px;margin:6px 0 20px;padding-right:40px}
+.sec{display:grid;gap:4px;margin-bottom:16px}
+.perso{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.perso svg{width:16px;height:16px}
+.eyebrow{margin:0 0 6px;font-size:13px;font-weight:600;color:var(--muted)}
+
+/* Sign up + onboarding */
+body.locked{overflow:hidden}
+.auth{position:fixed;inset:0;z-index:50;background:var(--bg);overflow-y:auto;animation:authIn .45s var(--ease)}
+.auth.leave{animation:authOut .45s var(--ease) forwards}
+.auth-in{max-width:560px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;gap:22px;padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));padding-block:calc(env(safe-area-inset-top,0px) + 18px) calc(env(safe-area-inset-bottom,0px) + 20px)}
+.ob-body{flex:1;display:flex;flex-direction:column;gap:14px}
+.step-in{animation:stepIn .55s var(--spring)}
+.step-back{animation:stepBack .55s var(--spring)}
+.big{font:700 clamp(32px,7vw,44px)/1.04 var(--display);letter-spacing:-.04em;margin:0;text-wrap:balance}
+.ob-body .sub{margin:0}
+.sub.flash{color:var(--fg)}
+.field.lg{height:52px;font-size:16px;border-radius:14px}
+.btn.wide{width:100%;height:54px;font-size:16px}
+.fine{font-size:12.5px;color:var(--muted);text-align:center;margin:0}
+.link.center{align-self:center}
+.err{margin:0;color:var(--warn);font-size:13.5px}
+.shake{animation:shake .4s}
+.su-mark{width:56px;height:56px;border-radius:17px;background:var(--ink);display:grid;place-items:center;margin-top:clamp(8px,6vh,56px);animation:grow .6s var(--spring) both}
+.su-mark svg{width:30px;height:30px}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:54px;border-radius:99px;background:var(--surface);color:var(--fg);font-weight:600;font-size:16px;box-shadow:inset 0 0 0 1.5px var(--line),var(--shadow);transition:transform .2s var(--spring),box-shadow .2s}
+.gbtn:hover{box-shadow:inset 0 0 0 1.5px var(--fg),var(--shadow)}
+.gbtn:active{transform:scale(.97)}
+.gbtn:disabled{cursor:default}
+.gbtn svg{width:20px;height:20px}
+.glogo{width:20px;height:20px;flex:none}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.me img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.mailic{width:56px;height:56px;border-radius:17px;background:var(--tile);display:grid;place-items:center;margin-top:clamp(8px,4vh,32px);animation:grow .6s var(--spring) both}
+.mailic.again{animation:pop .5s var(--spring)}
+.mailic svg{width:28px;height:28px;stroke:var(--fg);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.otp{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;max-width:400px;margin-top:8px}
+.otp input{width:100%;min-width:0;height:60px;padding:0;text-align:center;font:600 24px/1 var(--display);border-radius:14px;border:1.5px solid var(--line);background:var(--surface);color:var(--fg);outline:none;caret-color:var(--ink);font-variant-numeric:tabular-nums;transition:border-color .2s,box-shadow .2s,background .3s,color .3s,opacity .2s}
+.otp input:focus{border-color:var(--ink);box-shadow:0 0 0 4px color-mix(in srgb,var(--ink) 10%,transparent)}
+.otp input.filled{animation:tickIn .25s var(--spring)}
+.otp.bad input{border-color:var(--warn)}
+.otp.busy input{opacity:.45}
+.otp.ok input{background:var(--ink);color:var(--on-ink);border-color:var(--ink);animation:okWave .5s var(--spring) both}
+.otp.ok input:nth-child(2){animation-delay:.04s}.otp.ok input:nth-child(3){animation-delay:.08s}.otp.ok input:nth-child(4){animation-delay:.12s}.otp.ok input:nth-child(5){animation-delay:.16s}.otp.ok input:nth-child(6){animation-delay:.2s}
+.demo-code{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--tile);font-size:13.5px;color:var(--muted)}
+.demo-code b{color:var(--fg);letter-spacing:.14em;font-variant-numeric:tabular-nums}
+.link:disabled{text-decoration:none;cursor:default;opacity:.75}
+@keyframes tickIn{from{transform:scale(.88)}to{transform:none}}
+@keyframes okWave{40%{transform:translateY(-6px)}100%{transform:none}}
+.ob-top{display:flex;align-items:center;gap:14px}
+.iconbtn{width:38px;height:38px;border-radius:50%;background:var(--tile);display:grid;place-items:center;flex:none;transition:transform .2s var(--spring)}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn svg{width:18px;height:18px}
+.prog{flex:1;display:flex;gap:6px}
+.prog i{flex:1;height:4px;border-radius:2px;background:var(--tile);overflow:hidden;position:relative}
+.prog i::after{content:"";position:absolute;inset:0;background:var(--ink);transform:scaleX(0);transform-origin:left;transition:transform .7s var(--ease)}
+.prog i.on::after{transform:scaleX(1)}
+.ob-foot{position:sticky;bottom:0;padding-top:16px;background:linear-gradient(to bottom,transparent,var(--bg) 35%)}
+.ck{position:absolute;top:16px;right:16px;z-index:2;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--on-ink);display:grid;place-items:center;transform:scale(0);transition:transform .35s var(--spring)}
+[aria-pressed="true"] > .ck{transform:scale(1)}
+.ck svg{width:14px;height:14px}
+.vibes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (min-width:520px){.vibes{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.vibe{position:relative;display:flex;flex-direction:column;gap:2px;text-align:left;padding:8px 8px 12px;border-radius:20px;background:var(--surface);box-shadow:var(--shadow);transition:transform .3s var(--spring),box-shadow .3s;min-width:0}
+.vibe:active{transform:scale(.96)}
+.vibe[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.vibe .pics{position:relative;display:block;aspect-ratio:1.15;max-width:100%;border-radius:14px;background:var(--tile);margin-bottom:8px;overflow:hidden}
+.vibe .pics img{position:absolute;width:60%;bottom:8%;filter:drop-shadow(0 6px 8px rgba(0,0,0,.15));transition:transform .5s var(--spring)}
+.vibe .pics img:first-child{left:4%;rotate:-6deg}
+.vibe .pics img:last-child{right:4%;rotate:6deg}
+.vibe:hover .pics img:first-child{transform:translate(-4px,-3px)}
+.vibe:hover .pics img:last-child{transform:translate(4px,-3px)}
+.vibe b{font-size:15px;padding-inline:4px}
+.vibe .vd{font-size:12.5px;color:var(--muted);padding-inline:4px}
+.opts{display:grid;gap:10px}
+.opt{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:18px;background:var(--surface);box-shadow:var(--shadow);text-align:left;transition:box-shadow .25s,transform .2s var(--spring)}
+.opt:active{transform:scale(.98)}
+.opt[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.opt .oi{width:42px;height:42px;border-radius:12px;background:var(--tile);display:grid;place-items:center;flex:none}
+.opt .oi svg{width:22px;height:22px;stroke:var(--fg);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.opt b{display:block;font-size:15px}
+.opt .od{color:var(--muted);font-size:13.5px}
+.opt .ck{position:static;margin-left:auto;flex:none}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:14px 8px}
+.sw{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--muted);transition:color .2s}
+.sw i{width:44px;height:44px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(127,127,127,.35);display:grid;place-items:center;transition:transform .3s var(--spring),box-shadow .3s}
+.sw:hover i{transform:scale(1.08)}
+.sw[aria-pressed="true"]{color:var(--fg)}
+.sw[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ink)}
+.sw i svg{width:18px;height:18px;opacity:0;transform:scale(.4);transition:opacity .25s,transform .35s var(--spring)}
+.sw[aria-pressed="true"] i svg{opacity:1;transform:none}
+.done{align-items:center;justify-content:center;text-align:center}
+.tick{width:84px;height:84px;margin-bottom:6px}
+.tick circle{fill:var(--ink);transform-origin:center;animation:grow .55s var(--spring) both}
+.tick path{fill:none;stroke:var(--on-ink);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40;stroke-dashoffset:40;animation:draw .45s .4s var(--ease) forwards}
+@keyframes authIn{from{opacity:0;transform:scale(1.02)}to{opacity:1;transform:none}}
+@keyframes authOut{to{opacity:0;transform:scale(.98)}}
+@keyframes stepIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes stepBack{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+@keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes grow{from{transform:scale(0)}to{transform:scale(1)}}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:60;transform:translate(-50%,calc(100% + 40px + env(safe-area-inset-bottom,0px)));display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:99px;background:var(--ink);color:var(--on-ink);font-weight:500;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:transform .5s var(--spring);max-width:calc(100% - 32px)}
+.toast.show{transform:translate(-50%,0)}
+.toast svg{width:16px;height:16px;flex:none}
+.foot{margin-top:40px;display:flex;justify-content:center}
+
+@keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes rise{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes dropIn{0%{opacity:0;transform:translateY(-20px) scale(.8)}100%{opacity:1;transform:none}}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+@keyframes fly{to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0}}
+@keyframes bump{0%{transform:scale(1)}50%{transform:scale(1.4)}100%{transform:scale(1)}}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:-200% 0}}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.35}40%{transform:translateY(-5px);opacity:1}}
+@keyframes blink{50%{opacity:.3}}
+@keyframes float{50%{transform:translateY(-6px)}}
+@keyframes scan{from{top:-40%}to{top:100%}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@media (max-width:560px){.right{width:100%}.right .seg{flex:1;width:auto}.bar{gap:10px}.seg{width:100%}.seg button{flex:1;padding:7px 8px}.two{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="brand">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>
+      Stylist
+      <span class="ai wait" id="ai" title="Whether AI is available in this view"><i></i><span id="aiText">Connecting</span></span>
+    </div>
+    <div class="right"><nav class="seg" role="tablist" id="tabs">
+      <span class="pill" id="pill"></span>
+      <button role="tab" data-view="wardrobe" aria-selected="true">Wardrobe</button>
+      <button role="tab" data-view="style" aria-selected="false">Style me</button>
+      <button role="tab" data-view="saved" aria-selected="false">Saved<span class="badge" id="savedCount" hidden>0</span></button>
+    </nav><button class="me" id="me" data-act="me" aria-label="Your profile" hidden></button></div>
+  </div>
+</header>
+
+<main class="wrap" id="app"></main>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="auth" id="auth" role="dialog" aria-modal="true" aria-label="Sign up" hidden></div>
+
+<script>
+/* ---------- Data ---------- */
+const DEMO = [
+  {id:'d1',name:'White linen shirt',category:'top',kind:'shirt',hex:'#f3f1ec',color:'white',style:'smart',occasions:['work','weekend','travel']},
+  {id:'d2',name:'Black turtleneck',category:'top',kind:'knit',hex:'#1b1b1d',color:'black',style:'smart',occasions:['work','dinner','date']},
+  {id:'d3',name:'Breton striped tee',category:'top',kind:'tee',hex:'#f6f3ea',pattern:'stripe',color:'cream with navy stripes',style:'casual',occasions:['weekend','travel']},
+  {id:'d4',name:'Camel blazer',category:'outerwear',kind:'blazer',hex:'#b88a5c',color:'camel',style:'smart',occasions:['work','dinner']},
+  {id:'d5',name:'Beige trench coat',category:'outerwear',kind:'coat',hex:'#cdb894',color:'beige',style:'smart',occasions:['work','weekend','travel']},
+  {id:'d6',name:'Straight blue jeans',category:'bottom',kind:'jeans',hex:'#5d7fa3',color:'mid blue',style:'casual',occasions:['weekend','dinner','travel']},
+  {id:'d7',name:'Black tailored trousers',category:'bottom',kind:'trousers',hex:'#232325',color:'black',style:'smart',occasions:['work','dinner']},
+  {id:'d8',name:'Cream midi skirt',category:'bottom',kind:'skirt',hex:'#e8dcc8',color:'cream',style:'smart',occasions:['work','dinner','date']},
+  {id:'d9',name:'Olive slip dress',category:'dress',kind:'dress',hex:'#6c6f48',color:'olive',style:'evening',occasions:['dinner','date']},
+  {id:'d10',name:'White leather sneakers',category:'shoes',kind:'sneaker',hex:'#f7f7f5',color:'white',style:'casual',occasions:['weekend','travel','work']},
+  {id:'d11',name:'Black loafers',category:'shoes',kind:'loafer',hex:'#1d1d1f',color:'black',style:'smart',occasions:['work','dinner','date']},
+  {id:'d12',name:'Tan shoulder bag',category:'accessory',kind:'bag',hex:'#a9774b',color:'tan',style:'smart',occasions:['work','dinner','date','weekend']}
+];
+const CATS = {top:'Tops',bottom:'Bottoms',dress:'Dresses',outerwear:'Layers',shoes:'Shoes',accessory:'Bags & more'};
+const CAT_ONE = {top:'Top',bottom:'Bottom',dress:'Dress',outerwear:'Layer',shoes:'Shoes',accessory:'Accessory'};
+const KIND_FOR = {top:'tee',bottom:'trousers',dress:'dress',outerwear:'blazer',shoes:'sneaker',accessory:'bag'};
+const OCCASIONS = [['work','Work'],['dinner','Dinner'],['weekend','Weekend'],['date','Date night'],['travel','Travel']];
+const STYLES = ['casual','smart','formal','sporty','evening'];
+const KEY = 'stylist.v1';
+
+let state = {items:DEMO.map(x=>({...x})), saved:[], view:'wardrobe', filter:'all', mode:'occasion', occasion:'work', note:'', results:null, loading:false, find:null, findCat:'top', error:''};
+state.profile = null;
+try{ const s = JSON.parse(localStorage.getItem(KEY)||'null'); if(s){ state.items = s.items||state.items; state.saved = s.saved||[]; state.profile = s.profile||null; state.accounts = s.accounts||{}; } }catch(e){}
+state.accounts = state.accounts || {};
+const acctKey = p => p.provider==='google' ? 'google' : String(p.email||'').toLowerCase();
+if (state.profile && !state.profile.guest && !state.accounts[acctKey(state.profile)]) state.accounts[acctKey(state.profile)] = {...state.profile};
+function persist(){ try{ localStorage.setItem(KEY, JSON.stringify({items:state.items,saved:state.saved,profile:state.profile,accounts:state.accounts})); }catch(e){ toast('Storage is full. Remove a few photos.'); } }
+
+/* ---------- AI ---------- */
+let sample = null, canImages = false, aiReady = false;
+(async () => {
+  try{
+    if (window.claude) {
+      sample = await claude.use('sample');
+      if (sample) { const l = await sample.limits().catch(()=>null); canImages = !!(l && l.images); }
+    }
+  }catch(e){ sample = null; }
+  aiReady = true; paintAI();
+})();
+function aiOn(){ return !!sample; }
+function paintAI(){
+  const el = document.getElementById('ai'), t = document.getElementById('aiText');
+  el.classList.remove('wait','on');
+  if (!aiReady){ el.classList.add('wait'); t.textContent='Connecting'; return; }
+  if (sample){ el.classList.add('on'); t.textContent='AI on'; } else { t.textContent='Demo mode'; }
+}
+function aiFail(e){
+  const c = e && e.code;
+  if (['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'].includes(c)){ sample = null; paintAI(); return 'AI is off for this view, so I used demo suggestions.'; }
+  if (c==='images_unavailable'){ canImages=false; return 'This view can’t send photos to AI.'; }
+  if (c==='rate_limited') return 'Too many requests. Wait a moment and try again.';
+  if (c==='image_rejected') return 'That image couldn’t be read. Try a JPG or PNG under 20 MB.';
+  if (c==='refused') return 'AI declined this one. Try a different photo.';
+  return 'AI didn’t answer this time. Try again.';
+}
+
+/* ---------- Garment drawings ---------- */
+let uid = 0;
+function lum(hex){ const n=parseInt((hex||'#888').slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255; return (0.299*r+0.587*g+0.114*b)/255; }
+function garment(kind, hex, pattern){
+  const id = 'p'+(uid++);
+  const d = lum(hex) > .55 ? 'rgba(0,0,0,.22)' : 'rgba(255,255,255,.28)';
+  const S = {
+    tee:['M31 20 L43 15 Q50 22 57 15 L69 20 L86 34 L77 44 L70 39 L70 86 Q50 89 30 86 L30 39 L23 44 L14 34 Z','M43 15 Q50 24 57 15'],
+    shirt:['M32 16 L44 12 L50 20 L56 12 L68 16 L79 26 L87 72 L78 74 L70 40 L70 88 Q50 91 30 88 L30 40 L22 74 L13 72 L21 26 Z','M44 12 L47 24 L50 20 L53 24 L56 12 M50 22 L50 88'],
+    knit:['M42 7 L58 7 L58 17 L68 18 L79 27 L86 74 L77 76 L70 42 L70 88 Q50 91 30 88 L30 42 L23 76 L14 74 L21 27 L32 18 L42 17 Z','M42 10 L58 10 M42 13 L58 13 M30 82 Q50 85 70 82'],
+    blazer:['M32 16 L44 12 L50 20 L56 12 L68 16 L79 26 L87 72 L78 74 L70 40 L70 88 Q50 91 30 88 L30 40 L22 74 L13 72 L21 26 Z','M44 12 L40 30 L50 54 L60 30 L56 12 M50 54 L50 88 M36 66 L44 66 M56 66 L64 66'],
+    coat:['M33 12 L44 9 L50 16 L56 9 L67 12 L78 22 L86 76 L77 78 L71 40 L74 94 Q50 97 26 94 L29 40 L23 78 L14 76 L22 22 Z','M44 9 L40 26 L50 44 L60 26 L56 9 M29 54 L71 54 M50 44 L50 94'],
+    trousers:['M31 10 L69 10 L73 92 L56 92 L50 34 L44 92 L27 92 Z','M31 16 L69 16 M40 18 L37 90 M60 18 L63 90'],
+    jeans:['M31 10 L69 10 L73 92 L56 92 L50 34 L44 92 L27 92 Z','M31 16 L69 16 M34 18 Q40 26 44 18 M56 18 Q60 26 66 18 M50 16 L50 30'],
+    skirt:['M37 14 L63 14 L74 84 Q50 90 26 84 Z','M37 20 L63 20 M44 22 L40 86 M56 22 L60 86'],
+    dress:['M41 8 L45 8 L50 18 L55 8 L59 8 L61 34 L74 88 Q50 94 26 88 L39 34 Z','M39 36 Q50 39 61 36'],
+    sneaker:['M12 62 Q13 48 26 46 L40 44 Q48 54 64 56 Q82 58 88 66 L88 72 Q88 76 84 76 L16 76 Q12 76 12 72 Z','M12 69 L88 69 M42 48 L48 44 M46 51 L52 47 M50 53 L56 49'],
+    loafer:['M12 66 Q14 54 28 53 L46 52 Q58 58 72 58 Q86 59 88 68 L88 72 Q88 75 84 75 L16 75 Q12 75 12 72 Z','M12 71 L88 71 M42 57 Q52 63 62 59'],
+    bag:['M24 42 L76 42 L80 84 Q50 88 20 84 Z','M34 42 Q34 18 50 18 Q66 18 66 42 M24 42 L50 60 L76 42']
+  }[kind] || ['M30 20 L70 20 L74 86 L26 86 Z',''];
+  const fill = pattern==='stripe' ? `url(#${id})` : hex;
+  const defs = pattern==='stripe' ? `<defs><pattern id="${id}" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="${hex}"/><rect width="7" height="2.6" fill="#22304f"/></pattern></defs>` : '';
+  return `<svg class="g" viewBox="0 0 100 100" aria-hidden="true">${defs}<path d="${S[0]}" fill="${fill}" stroke="rgba(127,127,127,.4)" stroke-width="1" stroke-linejoin="round"/><path d="${S[1]}" fill="none" stroke="${d}" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+}
+const PHOTOS = {"d1": "images/d1.webp", "d2": "images/d2.webp", "d3": "images/d3.webp", "d4": "images/d4.webp", "d5": "images/d5.webp", "d6": "images/d6.webp", "d7": "images/d7.webp", "d8": "images/d8.webp", "d9": "images/d9.webp", "d10": "images/d10.webp", "d11": "images/d11.webp", "d12": "images/d12.webp"};
+function visual(item){ if (PHOTOS[item.id]) return `<img class="cut" src="${PHOTOS[item.id]}" alt="">`; return item.img ? `<img src="${item.img}" alt="">` : garment(item.kind||KIND_FOR[item.category], item.hex, item.pattern); }
+
+/* ---------- Helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const byId = id => state.items.find(i=>i.id===id);
+const ICON = {
+  plus:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  spark:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>',
+  heart:'<svg viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.5 3.8 4.5 7 4.5c2 0 3.4 1 5 2.8 1.6-1.8 3-2.8 5-2.8 3.2 0 5.3 3 4.2 6.2C19.5 15.4 12 20 12 20z"/></svg>',
+  photo:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="11" r="2"/><path d="M21 16l-5-5-8 8"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
+  hanger:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6a2 2 0 1 1 2 2c-1 .3-2 1-2 2l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 10"/></svg>'
+};
+
+function toast(msg, ok){
+  const t = $('#toast'); t.innerHTML = (ok?ICON.check:'') + `<span>${esc(msg)}</span>`;
+  t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function burst(el){
+  const b = document.createElement('span'); b.className='burst';
+  for(let i=0;i<8;i++){ const a=i/8*Math.PI*2; const s=document.createElement('i'); s.style.setProperty('--dx',Math.cos(a)*24+'px'); s.style.setProperty('--dy',Math.sin(a)*24+'px'); b.appendChild(s); }
+  el.appendChild(b); setTimeout(()=>b.remove(), 700);
+}
+async function shrink(file, max=640){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+    const k = Math.min(1, max/Math.max(img.width,img.height));
+    const c = document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return c.toDataURL('image/jpeg',.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ---------- Tabs ---------- */
+function movePill(){
+  const b = document.querySelector('#tabs button[aria-selected="true"]'), p = $('#pill');
+  p.style.width = b.offsetWidth+'px'; p.style.transform = `translateX(${b.offsetLeft}px)`;
+}
+function go(view){
+  state.view = view;
+  document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-selected', b.dataset.view===view));
+  movePill(); render(); window.scrollTo({top:0,behavior:'smooth'});
+}
+$('#tabs').addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) go(b.dataset.view); });
+addEventListener('resize', movePill);
+function paintCount(bump){
+  const c = $('#savedCount'); c.textContent = state.saved.length; c.hidden = !state.saved.length;
+  if (bump){ c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
+}
+
+/* ---------- Views ---------- */
+function render(){
+  const app = $('#app');
+  app.innerHTML = state.view==='wardrobe' ? viewWardrobe() : state.view==='style' ? viewStyle() : viewSaved();
+  app.firstElementChild && app.firstElementChild.classList.add('view');
+  paintCount();
+}
+
+function viewWardrobe(){
+  const cats = ['all', ...Object.keys(CATS).filter(c=>state.items.some(i=>i.category===c))];
+  const list = state.items.filter(i=>state.filter==='all'||i.category===state.filter);
+  const demo = state.items.some(i=>i.id.startsWith('d'));
+  return `<section>
+    <div class="head"><div>${hello()}<h1>Your wardrobe</h1><p class="sub">${state.items.length} pieces. Add a photo and AI labels it for you.</p></div>
+      <button class="btn" data-act="add">${ICON.plus}Add item</button></div>
+    ${demo?`<div class="note">${ICON.spark.replace('<svg','<svg width="18" height="18"')}<span>These are sample pieces so you can try styling right away. Add your own photos anytime.</span></div>`:''}
+    <div class="chips" style="margin-top:18px">${cats.map(c=>`<button class="chip" data-filter="${c}" aria-pressed="${state.filter===c}">${c==='all'?'All':CATS[c]}</button>`).join('')}</div>
+    <div class="grid">
+      <button class="card add" data-act="add" aria-label="Add item"><div class="tile"><span class="plus">${ICON.plus}</span></div><span class="cname">Add item</span><span class="cmeta">Photo or screenshot</span></button>
+      ${list.map(i=>`<button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>`).join('')}
+    </div>
+    ${list.length===0?`<div class="empty"><b>Nothing here yet</b><span>Add a piece to this category.</span></div>`:''}
+    <div class="foot"><button class="link" data-act="reset">Reset to sample wardrobe</button></div>
+  </section>`;
+}
+
+function viewStyle(){
+  const occ = state.mode==='occasion';
+  const f = state.find;
+  return `<section>
+    <div class="head"><div><h1>Style me</h1><p class="sub">Outfits made only from pieces you own, each with a reason it works.</p></div></div>
+    <div class="panel">
+      <div class="seg" role="tablist" id="modeSeg" style="width:max-content;max-width:100%">
+        <span class="pill"></span>
+        <button role="tab" data-mode="occasion" aria-selected="${occ}">For an occasion</button>
+        <button role="tab" data-mode="find" aria-selected="${!occ}">With a new find</button>
+      </div>
+      ${occ ? `
+        <div><div class="label">Where are you going?</div>
+          <div class="chips">${OCCASIONS.map(([k,v])=>`<button class="chip" data-occ="${k}" aria-pressed="${state.occasion===k}">${v}</button>`).join('')}</div></div>
+        <div><label class="label" for="note">Anything else? (optional)</label>
+          <input class="field" id="note" placeholder="It’s cold, I want to feel bold, no heels…" value="${esc(state.note)}"></div>
+      ` : `
+        <div><div class="label">The piece you found online</div>
+          <label class="drop" id="findDrop" for="findFile">
+            <span class="ic">${f?`<img src="${f.img}" alt="">`:ICON.photo}</span>
+            <span><b>${f?esc(f.name||'Your find'):'Upload a screenshot or photo'}</b><span>${f?'Tap to change':'From any shop, Instagram or Pinterest'}</span></span>
+          </label>
+          <input class="sr" type="file" id="findFile" accept="image/*"></div>
+        ${f && !aiOn() ? `<div><div class="label">What is it?</div><div class="chips">${Object.keys(CAT_ONE).map(c=>`<button class="chip" data-findcat="${c}" aria-pressed="${state.findCat===c}">${CAT_ONE[c]}</button>`).join('')}</div></div>`:''}
+        <div><div class="label">Where would you wear it?</div>
+          <div class="chips">${OCCASIONS.map(([k,v])=>`<button class="chip" data-occ="${k}" aria-pressed="${state.occasion===k}">${v}</button>`).join('')}</div></div>
+      `}
+      <div class="row"><button class="btn" data-act="style" ${state.loading||(!occ&&!f)?'disabled':''}>${ICON.spark}${state.results?'Try again':'Style me'}</button>
+        ${!aiOn()&&aiReady?'<span class="cmeta" style="margin:0">Demo mode: simple matching, no AI.</span>':''}</div>${persoLine()}
+    </div>
+    <div id="out">${outHTML()}</div>
+  </section>`;
+}
+
+function outHTML(){
+  if (state.loading) return `<div class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="caption" id="cap">Reading your wardrobe</span></div>
+    <div class="results">${[0,1,2].map(n=>`<div class="skel" style="animation:rise .5s ${n*.08}s var(--spring) both"><div class="collage" style="--n:3">${'<div class="tile shim"></div>'.repeat(3)}</div><div class="shim" style="height:18px;width:60%"></div><div class="shim" style="height:12px"></div><div class="shim" style="height:12px;width:80%"></div></div>`).join('')}</div>`;
+  let h = '';
+  if (state.error) h += `<div class="note" style="margin-top:22px">${esc(state.error)}</div>`;
+  if (!state.results) return h;
+  if (state.results.missing) h += `<div class="note" style="margin-top:22px">${ICON.spark.replace('<svg','<svg width="18" height="18"')}<span>${esc(state.results.missing)}</span></div>`;
+  return h + `<div class="results">${state.results.outfits.map((o,n)=>lookHTML(o,n)).join('')}</div>`;
+}
+
+function sig(o){ return [...o.itemIds].sort().join('+') + (o.find?'+find:'+o.find.img.length:''); }
+function lookHTML(o, n, savedView){
+  const items = o.itemIds.map(byId).filter(Boolean);
+  const tiles = (o.find?[`<div class="tile find"><img src="${o.find.img}" alt=""></div>`]:[]).concat(items.map(i=>`<div class="tile" title="${esc(i.name)}">${visual(i)}</div>`));
+  const isSaved = state.saved.some(s=>sig(s)===sig(o));
+  return `<article class="look" style="animation-delay:${n*.09}s">
+    <div class="collage" style="--n:${Math.min(tiles.length,4)}">${tiles.slice(0,8).join('')}</div>
+    <div class="lhead"><div><h3>${esc(o.title)}</h3>${o.occasion?`<span class="cmeta" style="margin-top:2px">${esc((OCCASIONS.find(x=>x[0]===o.occasion)||[])[1]||'')}</span>`:''}</div>
+      <button class="heart" data-heart="${savedView?'s:'+o.id:n}" aria-pressed="${isSaved}" aria-label="${isSaved?'Remove from saved':'Save outfit'}">${ICON.heart}</button></div>
+    <p class="why">${esc(o.why)}</p>
+    <div class="pieces">${o.find?`<span class="tag">${esc(o.find.name||'New find')}</span>`:''}${items.map(i=>`<span class="tag"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.name)}</span>`).join('')}</div>
+  </article>`;
+}
+
+function viewSaved(){
+  if (!state.saved.length) return `<section><div class="head"><div><h1>Saved</h1></div></div>
+    <div class="empty"><div class="big">${ICON.heart.replace('<svg','<svg style="stroke:var(--fg);fill:none;stroke-width:1.6"')}</div><b>No saved outfits yet</b><span>Tap the heart on an outfit you like.</span><button class="btn sm" data-goto="style" style="margin-top:6px">Style me</button></div></section>`;
+  return `<section><div class="head"><div><h1>Saved</h1><p class="sub">${state.saved.length} outfit${state.saved.length>1?'s':''} you liked.</p></div></div>
+    <div class="results">${state.saved.slice().reverse().map((o,n)=>lookHTML(o,n,true)).join('')}</div></section>`;
+}
+
+/* ---------- Styling ---------- */
+function wardrobeText(){
+  return state.items.map(i=>`${i.id} | ${i.name} | ${i.category} | ${i.color} | ${i.style||''} | ${(i.occasions||[]).join(',')}`).join('\n');
+}
+function clean(outfits, needFind){
+  const seen = new Set(); const out = [];
+  for (const o of (Array.isArray(outfits)?outfits:[])){
+    const ids = [...new Set((o.itemIds||[]).map(String))].filter(id=>byId(id));
+    if (!ids.length && !needFind) continue;
+    const k = ids.slice().sort().join('+'); if (seen.has(k)) continue; seen.add(k);
+    out.push({title:String(o.title||'Outfit').slice(0,40), why:String(o.why||''), itemIds:ids});
+    if (out.length===3) break;
+  }
+  return out;
+}
+let capTimer;
+async function runStyle(){
+  const findMode = state.mode==='find';
+  const prev = state.results ? state.results.outfits.map(o=>o.itemIds.map(id=>byId(id)?.name).join(' + ')) : [];
+  state.loading = true; state.error=''; render();
+  const caps = ['Reading your wardrobe','Pairing colors','Checking proportions','Adding finishing touches'];
+  let ci = 0; clearInterval(capTimer);
+  capTimer = setInterval(()=>{ const c=$('#cap'); if(!c) return; c.style.opacity=0; setTimeout(()=>{ ci=(ci+1)%caps.length; c.textContent=caps[ci]; c.style.opacity=1; },250); }, 1700);
+  let res = null;
+  const occName = (OCCASIONS.find(x=>x[0]===state.occasion)||[])[1];
+  try{
+    if (!aiOn() || (findMode && !canImages)) throw {code:'local'};
+    const rules = profileText() + `Rules: use ONLY ids from the wardrobe list. Each outfit must be complete: a top plus a bottom, or a dress, plus shoes. Add a layer or bag only when it helps. Make each outfit clearly different.${prev.length?' Avoid repeating these combinations: '+prev.join('; ')+'.':''}`;
+    if (!findMode){
+      const p = `You are a friendly personal stylist. Build exactly 3 outfits for: ${occName}.${state.note?' The person adds: "'+state.note+'".':''}
+Wardrobe (id | name | category | color | style | occasions):
+${wardrobeText()}
+${rules}
+Reply with only JSON: {"outfits":[{"title":"2-4 word name","itemIds":["d1","d7"],"why":"One or two plain sentences on why it works for this occasion: color, shape, mood."}],"missing":"If the wardrobe cannot make 3 complete outfits, one short sentence on which piece to add; otherwise empty string"}`;
+      const r = await sample.json(p, {modelTier:'quick', cache:false});
+      res = {outfits:clean(r&&r.outfits).map(o=>({...o, occasion:state.occasion})), missing:(r&&r.missing)||''};
+    } else {
+      const p = `You are a friendly personal stylist. The image is a clothing item the person found online and is thinking of buying. Style it with their own wardrobe for: ${occName}.
+Wardrobe (id | name | category | color | style | occasions):
+${wardrobeText()}
+Build exactly 3 outfits. The new find is ALWAYS part of every outfit automatically, so do not list it in itemIds. ${rules} Count the find toward completeness.
+Reply with only JSON: {"find":{"name":"short name like Red knit cardigan","category":"top|bottom|dress|outerwear|shoes|accessory"},"outfits":[{"title":"2-4 word name","itemIds":["d6","d10"],"why":"One or two plain sentences on why the find works with these pieces."}],"missing":"empty string, or one short sentence if the wardrobe lacks a piece to make it work"}`;
+      const file = state.find.file || await (await fetch(state.find.img)).blob();
+      const r = await sample.json(p, {modelTier:'quick', cache:false, images:[file]});
+      if (r && r.find && r.find.name) state.find.name = String(r.find.name).slice(0,40);
+      const f = {img:state.find.img, name:state.find.name};
+      res = {outfits:clean(r&&r.outfits,true).map(o=>({...o, occasion:state.occasion, find:f})), missing:(r&&r.missing)||''};
+    }
+    if (!res.outfits.length) throw {code:'empty'};
+  }catch(e){
+    if (e && e.code!=='local' && e.code!=='empty') state.error = aiFail(e);
+    if (e && e.code==='empty') state.error = 'AI couldn’t build complete outfits from these pieces, so here are simple matches.';
+    res = localStyle(findMode);
+  }
+  clearInterval(capTimer);
+  state.loading = false; state.results = res; render();
+}
+
+/* Simple matching when AI is not available */
+function localStyle(findMode){
+  const occ = state.occasion, pick = a => a[Math.floor(Math.random()*a.length)];
+  const fits = i => (i.occasions||[]).includes(occ);
+  const loved = (state.profile?.colors||[]).map(c=>c.toLowerCase());
+  const pool = c => { const all = state.items.filter(i=>i.category===c); const good = all.filter(fits); const base = good.length?good:all; const fav = base.filter(i=>loved.some(l=>(i.color||'').toLowerCase().includes(l))); return fav.length && Math.random()<.6 ? fav : base; };
+  const fc = findMode ? state.findCat : null;
+  const outs = []; const seen = new Set();
+  for (let t=0; t<40 && outs.length<3; t++){
+    const ids = [];
+    const useDress = fc==='dress' || (!fc || fc==='outerwear' || fc==='shoes' || fc==='accessory') && pool('dress').length && Math.random()<.3 && !['top','bottom'].includes(fc);
+    if (useDress && fc!=='dress'){ const d=pool('dress'); if(d.length) ids.push(pick(d).id); }
+    else if (!useDress){
+      if (fc!=='top'){ const a=pool('top'); if(a.length) ids.push(pick(a).id); }
+      if (fc!=='bottom'){ const a=pool('bottom'); if(a.length) ids.push(pick(a).id); }
+    }
+    if (fc!=='shoes'){ const a=pool('shoes'); if(a.length) ids.push(pick(a).id); }
+    if (fc!=='outerwear' && ['work','dinner','travel'].includes(occ) && Math.random()<.6){ const a=pool('outerwear'); if(a.length) ids.push(pick(a).id); }
+    if (fc!=='accessory' && Math.random()<.5){ const a=pool('accessory'); if(a.length) ids.push(pick(a).id); }
+    const k = ids.slice().sort().join('+'); if (!ids.length || seen.has(k)) continue; seen.add(k);
+    const items = ids.map(byId);
+    const colors = [...new Set(items.map(i=>i.color))].slice(0,3).join(', ');
+    outs.push({title:['Easy classic','Clean lines','Quiet contrast','Soft and simple','Off-duty'][outs.length+Math.floor(Math.random()*2)],
+      why:`${colors} sit well together, and every piece here is one you already tagged for ${(OCCASIONS.find(x=>x[0]===occ)||[])[1].toLowerCase()}.${state.profile?.vibes?.length?' It suits your '+vibeName(state.profile.vibes[0]).toLowerCase()+' style.':''}`,
+      itemIds:ids, occasion:occ, find: findMode?{img:state.find.img,name:state.find.name||'Your find'}:null});
+  }
+  return {outfits:outs, missing: outs.length?'':'Add a few more pieces to get complete outfits.'};
+}
+
+/* ---------- Sheet (add + detail) ---------- */
+let draft = null;
+function openSheet(html){
+  const s=$('#sheet'), c=$('#scrim');
+  s.innerHTML = `<div class="grab"></div><button class="x" data-act="close" aria-label="Close">${ICON.x}</button>` + html;
+  s.hidden=false; c.hidden=false;
+  requestAnimationFrame(()=>{ s.classList.add('open'); c.classList.add('open'); });
+}
+function closeSheet(){
+  const s=$('#sheet'), c=$('#scrim'); s.classList.remove('open'); c.classList.remove('open');
+  setTimeout(()=>{ s.hidden=true; c.hidden=true; s.innerHTML=''; }, 400); draft=null;
+}
+$('#scrim').addEventListener('click', closeSheet);
+addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
+
+function addSheet(){
+  draft = {step:'pick'};
+  openSheet(`<h2>Add a piece</h2><p class="sub">A photo on a plain background works best.</p><div id="addBody">${addBody()}</div>`);
+}
+function addBody(){
+  if (draft.step==='pick') return `<label class="drop" id="addDrop" for="addFile" style="margin-top:16px">
+      <span class="ic">${ICON.photo}</span><span><b>Choose a photo</b><span>Or drag one here, or paste</span></span></label>
+      <input class="sr" type="file" id="addFile" accept="image/*">`;
+  const d = draft;
+  return `<div class="preview">${d.img?`<img src="${d.img}" alt="">`:''}${d.step==='reading'?'<div class="scan"></div>':''}</div>
+    ${d.step==='reading' ? `<div class="thinking" style="justify-content:center;margin:0"><span class="dots"><i></i><i></i><i></i></span>Looking at your piece</div>` : `
+    ${d.msg?`<div class="note" style="margin-bottom:14px">${esc(d.msg)}</div>`:''}
+    ${d.ai?`<div class="tags" style="margin-bottom:14px">${[CAT_ONE[d.category],d.color,d.style].filter(Boolean).map((t,n)=>`<span class="tag" style="animation-delay:${n*.08}s">${n===1?`<span class="dot" style="background:${esc(d.hex)}"></span>`:''}${esc(t)}</span>`).join('')}</div>`:''}
+    <div class="form">
+      <div><label class="label" for="fName">Name</label><input class="field" id="fName" value="${esc(d.name)}" placeholder="White linen shirt"></div>
+      <div class="two">
+        <div><label class="label" for="fCat">Type</label><select class="field" id="fCat">${Object.keys(CAT_ONE).map(c=>`<option value="${c}" ${d.category===c?'selected':''}>${CAT_ONE[c]}</option>`).join('')}</select></div>
+        <div><label class="label" for="fColor">Color</label><div class="pick"><input type="color" id="fHex" value="${esc(d.hex)}" aria-label="Color swatch"><input class="field" id="fColor" value="${esc(d.color)}" placeholder="White"></div></div>
+      </div>
+      <div><div class="label">Good for</div><div class="chips">${OCCASIONS.map(([k,v])=>`<button class="chip" data-docc="${k}" aria-pressed="${d.occasions.includes(k)}">${v}</button>`).join('')}</div></div>
+      <button class="btn" data-act="saveItem">Add to wardrobe</button>
+    </div>`}`;
+}
+function paintAdd(){ const b=$('#addBody'); if(b) b.innerHTML = addBody(); }
+async function takeAddFile(file){
+  if (!file || !file.type.startsWith('image/')) return toast('Pick an image file');
+  draft = {step:'reading', img: await shrink(file), name:'', category:'top', color:'', hex:'#cccccc', style:'casual', occasions:[], ai:false};
+  paintAdd();
+  if (aiOn() && canImages){
+    try{
+      const r = await sample.json(`The image shows one clothing item (a photo or a shop screenshot). Describe it for a wardrobe app. Reply with only JSON:
+{"name":"short friendly name, e.g. White linen shirt","category":"top|bottom|dress|outerwear|shoes|accessory","color":"main color in 1-3 plain words","hex":"#rrggbb approximate main color","style":"casual|smart|formal|sporty|evening","occasions":["any of: work, dinner, weekend, date, travel"],"isClothing":true}`, {modelTier:'quick', images:[file]});
+      if (!draft) return;
+      Object.assign(draft, {
+        name:String(r.name||'').slice(0,40), category: CAT_ONE[r.category]?r.category:'top', color:String(r.color||''),
+        hex:/^#[0-9a-f]{6}$/i.test(r.hex||'')?r.hex:'#cccccc', style: STYLES.includes(r.style)?r.style:'casual',
+        occasions:(Array.isArray(r.occasions)?r.occasions:[]).filter(o=>OCCASIONS.some(x=>x[0]===o)), ai:true,
+        msg: r.isClothing===false ? 'This doesn’t look like clothing. You can still add it.' : ''
+      });
+    }catch(e){ if(!draft) return; draft.msg = aiFail(e)+' Fill in the details below.'; }
+  } else draft.msg = 'Demo mode: fill in the details below.';
+  if (!draft) return;
+  draft.step='edit'; paintAdd();
+}
+function saveItem(){
+  const d = draft; d.name = $('#fName').value.trim(); d.category=$('#fCat').value; d.color=$('#fColor').value.trim(); d.hex=$('#fHex').value;
+  if (!d.name){ $('#fName').focus(); return toast('Give it a name'); }
+  const item = {id:'u'+Date.now().toString(36), name:d.name, category:d.category, color:d.color||'—', hex:d.hex, style:d.style, occasions:d.occasions.length?d.occasions:['weekend'], img:d.img, _new:true};
+  state.items.unshift(item); persist(); closeSheet();
+  state.filter='all'; if(state.view!=='wardrobe') go('wardrobe'); else render();
+  setTimeout(()=>{ delete item._new; }, 800);
+  toast('Added to your wardrobe', true);
+}
+
+function detailSheet(id){
+  const i = byId(id); if(!i) return;
+  openSheet(`<div class="preview">${visual(i)}</div><h2>${esc(i.name)}</h2>
+    <div class="tags" style="margin:10px 0 18px"><span class="tag">${CAT_ONE[i.category]||''}</span><span class="tag"><span class="dot" style="background:${esc(i.hex)}"></span>${esc(i.color)}</span>${i.style?`<span class="tag">${esc(i.style)}</span>`:''}${(i.occasions||[]).map(o=>`<span class="tag">${esc((OCCASIONS.find(x=>x[0]===o)||[])[1]||o)}</span>`).join('')}</div>
+    <div class="row"><button class="btn" data-styleitem="${i.id}">${ICON.spark}Style this piece</button><button class="btn ghost danger" data-del="${i.id}">Remove</button></div>`);
+}
+
+/* ---------- Sign up + onboarding ---------- */
+const VIBES = [
+  {k:'minimal', n:'Minimal', d:'Clean lines, few colors', p:['d2','d7']},
+  {k:'classic', n:'Classic', d:'Timeless and tailored', p:['d5','d11']},
+  {k:'casual', n:'Casual', d:'Easy and comfy', p:['d3','d6']},
+  {k:'polished', n:'Polished', d:'Smart for the office', p:['d4','d8']},
+  {k:'evening', n:'Evening', d:'Silky, a little special', p:['d9','d12']},
+  {k:'relaxed', n:'Relaxed', d:'Light layers, sneakers', p:['d1','d10']}
+];
+const PALETTE = [['Black','#121212'],['White','#f6f6f4'],['Cream','#efe6d2'],['Beige','#d6c3a3'],['Camel','#b88a5c'],['Brown','#6b4a32'],['Grey','#9a9a9e'],['Navy','#22304f'],['Denim','#5d7fa3'],['Olive','#6c6f48'],['Burgundy','#6e1f2e'],['Red','#c8332f'],['Pink','#e9a8b8'],['Lilac','#b9a7d6']];
+const AVOID = ['Heels','Tight fits','Short hemlines','Bright colors','Bold prints','Very formal looks'];
+const STEPS = ['style','week','colors'];
+const OCC_SUB = {work:'Office, meetings', dinner:'Restaurants, friends', weekend:'Errands, coffee, walks', date:'Something a bit special', travel:'Trips and long days out'};
+const OCC_ICON = {
+  work:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>',
+  dinner:'<svg viewBox="0 0 24 24"><path d="M7 3h10l-1 6a4 4 0 0 1-8 0zM12 13v7M8 21h8"/></svg>',
+  weekend:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  date:'<svg viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.5 3.8 4.5 7 4.5c2 0 3.4 1 5 2.8 1.6-1.8 3-2.8 5-2.8 3.2 0 5.3 3 4.2 6.2C19.5 15.4 12 20 12 20z"/></svg>',
+  travel:'<svg viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="13" rx="2"/><path d="M9 7V4h6v3M9 11v5M15 11v5"/></svg>'
+};
+const BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+const vibeName = k => (VIBES.find(v=>v.k===k)||{}).n || k;
+const occLabel = k => (OCCASIONS.find(x=>x[0]===k)||[])[1] || k;
+const swHex = n => (PALETTE.find(x=>x[0]===n)||[])[1] || '#999';
+const spark16 = () => ICON.spark;
+
+function profileText(){
+  const p = state.profile; if (!p || p.guest) return '';
+  const parts = [];
+  if (p.vibes?.length) parts.push('style: ' + p.vibes.map(vibeName).join(', '));
+  if (p.colors?.length) parts.push('favourite colors: ' + p.colors.join(', '));
+  if (p.avoid?.length) parts.push('avoids: ' + p.avoid.join(', ') + ' (never suggest these)');
+  return parts.length ? `About the person${displayName(p)?' ('+displayName(p)+')':''}: ${parts.join('; ')}. Lean toward their style and colors, and mention it in the reason when it helps. ` : '';
+}
+function hello(){ const n = displayName(state.profile); return n ? `<p class="eyebrow">Hi, ${esc(n)}</p>` : ''; }
+function persoLine(){
+  const p = state.profile; if (!p) return '';
+  if (p.guest) return `<div class="perso">${spark16()}<span>Create an account to personalize outfits.</span><button class="link" data-act="signup">Sign up</button></div>`;
+  if (!p.vibes.length && !p.colors.length && !p.avoid.length) return `<div class="perso">${spark16()}<span>Tell us your style to personalize outfits.</span><button class="link" data-act="editprefs">Set up</button></div>`;
+  return `<div class="perso">${spark16()}<span>Personalized for you</span>${p.vibes.map(v=>`<span class="tag">${esc(vibeName(v))}</span>`).join('')}${p.colors.slice(0,3).map(c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`).join('')}<button class="link" data-act="editprefs">Edit</button></div>`;
+}
+function paintMe(){
+  const b = $('#me'), p = state.profile; b.hidden = !p; if (!p) return;
+  const n = displayName(p);
+  b.innerHTML = p.guest ? PERSON : (isG(p) && viewer.avatar) ? `<img src="${esc(viewer.avatar)}" alt="">` : n ? esc(n[0].toUpperCase()) : PERSON;
+}
+function meSheet(){
+  const p = state.profile || {};
+  if (p.guest) return openSheet(`<div class="prof"><span class="me xl">${PERSON}</span><div><h2>Guest</h2><p class="sub" style="margin:0">You’re looking around without an account.</p></div></div>
+    <p class="sub" style="margin-bottom:18px">Sign up to save your style and get outfits made for you.</p>
+    <div class="row"><button class="btn" data-act="signup">Create account</button><button class="btn ghost" data-act="signin">Sign in</button></div>`);
+  const tags = (arr, f) => arr.length ? `<div class="tags">${arr.map(f).join('')}</div>` : '<span class="cmeta" style="margin:0">Not set</span>';
+  const n = displayName(p), em = displayEmail(p);
+  const av = isG(p) && viewer.avatar ? `<img src="${esc(viewer.avatar)}" alt="">` : n ? esc(n[0].toUpperCase()) : PERSON;
+  openSheet(`<div class="prof"><span class="me xl">${av}</span><div style="min-width:0"><h2>${esc(n || 'Your profile')}</h2><p class="sub" style="margin:0;overflow:hidden;text-overflow:ellipsis">${esc(em)}${isG(p) ? (em?' · ':'') + 'Signed in with Google (demo)' : ''}</p></div></div>
+    <div class="sec"><div class="label">Style</div>${tags(p.vibes, v=>`<span class="tag">${esc(vibeName(v))}</span>`)}</div>
+    <div class="sec"><div class="label">Dresses for</div>${tags(p.occasions, o=>`<span class="tag">${esc(occLabel(o))}</span>`)}</div>
+    <div class="sec"><div class="label">Favourite colors</div>${tags(p.colors, c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`)}</div>
+    <div class="sec"><div class="label">Avoids</div>${tags(p.avoid, a=>`<span class="tag">${esc(a)}</span>`)}</div>
+    <div class="row" style="margin-top:6px"><button class="btn" data-act="editprefs">Edit preferences</button><button class="btn ghost danger" data-act="signout">Sign out</button></div>`);
+}
+
+let viewer = {name:'', email:'', avatar:''};
+(async () => {
+  try{
+    const u = window.claude ? await claude.use('user') : null; if (!u) return;
+    const m = await u.me();
+    viewer = {name:(m.name||'').split(' ')[0], email:m.email||'', avatar: m.name ? m.avatarUrl : ''};
+    paintMe(); if (!ob) render(); else if (ob.step==='done') paintAuth();
+  }catch(e){}
+})();
+const isG = p => p && p.provider==='google';
+const displayName = p => (p && (p.name || (isG(p) ? viewer.name : ''))) || '';
+const displayEmail = p => (p && (p.email || (isG(p) ? viewer.email : ''))) || '';
+const GLOGO = 'images/google.png';
+let ob = null;
+function startOnboarding(step, editing){
+  const p = state.profile && !state.profile.guest ? state.profile : {};
+  ob = {step, mode: step==='signin' ? 'signin' : 'signup', dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', email:p.email||'', vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
+  const el = $('#auth'); el.classList.remove('leave'); el.hidden = false; document.body.classList.add('locked');
+  paintAuth();
+}
+function endAuth(){
+  const el = $('#auth'); el.classList.add('leave'); document.body.classList.remove('locked');
+  setTimeout(()=>{ el.hidden = true; el.innerHTML = ''; el.classList.remove('leave'); }, 430);
+  ob = null; paintMe(); render(); requestAnimationFrame(movePill);
+}
+function saveProfile(){
+  state.profile = {...ob.p, guest:false};
+  state.accounts[acctKey(state.profile)] = {...state.profile};
+  if (state.profile.occasions.length) state.occasion = state.profile.occasions[0];
+  persist();
+}
+function paintAuth(){
+  const el = $('#auth'), o = ob, p = o.p, anim = o.dir < 0 ? 'step-back' : 'step-in';
+  el.setAttribute('aria-label', o.step==='signup' ? 'Sign up' : o.step==='signin' ? 'Sign in' : o.step==='verify' ? 'Verify email' : 'Personalize');
+  if (o.step === 'signup'){
+    el.innerHTML = `<div class="auth-in">
+      <div class="ob-body ${anim}">
+        <span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>
+        <h1 class="big" style="margin-top:10px">Get dressed<br>in seconds.</h1>
+        <p class="sub">Outfit ideas from clothes you already own.</p>
+        <button class="gbtn" type="button" data-ob="google" style="margin-top:14px"><img class="glogo" src="${GLOGO}" alt="" width="20" height="20"><span id="gLabel">Continue with Google</span></button>
+        <div class="or">or</div>
+        <form id="signup" class="form" novalidate>
+          <div><label class="label" for="suName">First name</label><input class="field lg" id="suName" autocomplete="given-name" autocapitalize="words" value="${esc(p.name)}" placeholder="Ellen"></div>
+          <div><label class="label" for="suEmail">Email</label><input class="field lg" id="suEmail" type="email" inputmode="email" autocomplete="email" value="${esc(p.email)}" placeholder="you@example.com"></div>
+          <p class="err" id="suErr" role="alert" hidden></p>
+          <button class="btn wide" type="submit">Sign up with email</button>
+        </form>
+        <p class="fine" style="font-size:14px">Already have an account? <button class="link" type="button" data-ob="tosignin">Sign in</button></p>
+        <p class="fine">Demo only: sign-in is simulated, no account is created and nothing is sent.</p>
+        <button class="link center" type="button" data-ob="skipall">Just look around</button>
+      </div></div>`;
+    el.scrollTop = 0;
+        return;
+  }
+  if (o.step === 'signin'){
+    el.innerHTML = `<div class="auth-in">
+      <div class="ob-top"><button class="iconbtn" data-ob="tosignup" aria-label="Back">${BACK}</button></div>
+      <div class="ob-body ${anim}">
+        <span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>
+        <h1 class="big" style="margin-top:10px">Welcome back.</h1>
+        <p class="sub">Sign in to get to your wardrobe.</p>
+        <button class="gbtn" type="button" data-ob="google" style="margin-top:14px"><img class="glogo" src="${GLOGO}" alt="" width="20" height="20"><span id="gLabel">Continue with Google</span></button>
+        <div class="or">or</div>
+        <form id="signin" class="form" novalidate>
+          <div><label class="label" for="siEmail">Email</label><input class="field lg" id="siEmail" type="email" inputmode="email" autocomplete="email" value="${esc(p.email)}" placeholder="you@example.com"></div>
+          <p class="err" id="siErr" role="alert" hidden></p>
+          <button class="btn wide" type="submit">Continue with email</button>
+        </form>
+        <p class="fine" style="font-size:14px">New to Stylist? <button class="link" type="button" data-ob="tosignup">Create an account</button></p>
+        <p class="fine">Demo only: sign-in is simulated and nothing is sent.</p>
+      </div></div>`;
+    el.scrollTop = 0; return;
+  }
+  if (o.step === 'verify'){
+    el.innerHTML = `<div class="auth-in">
+      <div class="ob-top"><button class="iconbtn" data-ob="back" aria-label="Back">${BACK}</button></div>
+      <div class="ob-body ${anim}">
+        <span class="mailic" id="mailic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7l8.5 6 8.5-6"/></svg></span>
+        <h1 class="big" style="margin-top:10px">Check your email</h1>
+        <p class="sub">We sent a 6-digit code to <b style="color:var(--fg)">${esc(p.email)}</b>. It works for 10 minutes.</p>
+        <div class="otp" id="otp" role="group" aria-label="Verification code">${[0,1,2,3,4,5].map(n=>`<input inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="${n===0?'one-time-code':'off'}" aria-label="Digit ${n+1}">`).join('')}</div>
+        <p class="err" id="otpErr" role="alert" hidden></p>
+        <div class="demo-code">Demo: no email is really sent. Your code is <b id="demoCode">${o.code.slice(0,3)} ${o.code.slice(3)}</b></div>
+        <div class="row" style="justify-content:space-between"><button class="link" data-ob="resend" id="resend" disabled>Resend code</button><button class="link" data-ob="changeemail">Change email</button></div>
+      </div>
+      <div class="ob-foot"><button class="btn wide" data-ob="verify" id="verifyBtn" disabled>Verify</button></div></div>`;
+    el.scrollTop = 0; tickResend();
+    setTimeout(()=>otpBoxes()[0]?.focus(), 420);
+    return;
+  }
+  if (o.step === 'done'){
+    const tags = [...p.vibes.map(v=>`<span class="tag">${esc(vibeName(v))}</span>`), ...p.colors.slice(0,4).map(c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`)];
+    el.innerHTML = `<div class="auth-in"><div class="ob-body done step-in">
+      <svg class="tick" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="25"/><path d="M15 27l7 7 15-16"/></svg>
+      <h1 class="big">You’re all set${displayName(p)?', '+esc(displayName(p)):''}.</h1>
+      <p class="sub">${p.vibes.length||p.colors.length ? 'Every outfit will now lean toward your style.' : 'You can set your style anytime from your profile.'}</p>
+      ${tags.length?`<div class="tags" style="justify-content:center;margin-top:4px">${tags.join('')}</div>`:''}
+      </div><div class="ob-foot"><button class="btn wide" data-ob="finish">See my wardrobe</button></div></div>`;
+    el.scrollTop = 0; return;
+  }
+  const i = STEPS.indexOf(o.step), last = i === STEPS.length-1;
+  const prog = STEPS.map((s,n)=>`<i class="${n<i || (n===i && o.dir<0) ? 'on' : ''}"${n===i?' data-cur':''}></i>`).join('');
+  let body = '';
+  if (o.step === 'style') body = `<p class="eyebrow">Step 1 of 3</p><h1 class="big">What’s your style?</h1><p class="sub" id="vibeHint">Pick up to 3. Outfits will lean toward them.</p>
+    <div class="vibes">${VIBES.map(v=>`<button class="vibe" data-vibe="${v.k}" aria-pressed="${p.vibes.includes(v.k)}"><span class="ck">${ICON.check}</span><span class="pics"><img src="${PHOTOS[v.p[0]]}" alt=""><img src="${PHOTOS[v.p[1]]}" alt=""></span><b>${v.n}</b><span class="vd">${v.d}</span></button>`).join('')}</div>`;
+  if (o.step === 'week') body = `<p class="eyebrow">Step 2 of 3</p><h1 class="big">What do you dress for most?</h1><p class="sub">Pick all that apply. We’ll start there.</p>
+    <div class="opts">${OCCASIONS.map(([k,v])=>`<button class="opt" data-wk="${k}" aria-pressed="${p.occasions.includes(k)}"><span class="oi">${OCC_ICON[k]}</span><span><b>${v}</b><span class="od">${OCC_SUB[k]}</span></span><span class="ck">${ICON.check}</span></button>`).join('')}</div>`;
+  if (o.step === 'colors') body = `<p class="eyebrow">Step 3 of 3</p><h1 class="big">Colors you love</h1><p class="sub">Tap any that feel like you.</p>
+    <div class="swatches">${PALETTE.map(([n,h])=>`<button class="sw" data-col="${n}" aria-pressed="${p.colors.includes(n)}"><i style="background:${h}"><svg viewBox="0 0 24 24" fill="none" stroke="${lum(h)>.55?'#000':'#fff'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></i>${n}</button>`).join('')}</div>
+    <div style="margin-top:14px"><div class="label">Anything to avoid?</div><div class="chips">${AVOID.map(a=>`<button class="chip" data-av="${a}" aria-pressed="${p.avoid.includes(a)}">${a}</button>`).join('')}</div></div>`;
+  el.innerHTML = `<div class="auth-in">
+    <div class="ob-top"><button class="iconbtn" data-ob="back" aria-label="Back">${BACK}</button><div class="prog" aria-hidden="true">${prog}</div><button class="link" data-ob="skip">Skip</button></div>
+    <div class="ob-body ${anim}">${body}</div>
+    <div class="ob-foot"><button class="btn wide" data-ob="next">${last ? (o.editing ? 'Save' : 'Finish') : 'Continue'}</button></div></div>`;
+  el.scrollTop = 0;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ el.querySelector('[data-cur]')?.classList.add('on'); }));
+}
+let resendTimer;
+function signInAs(acc){
+  if (!acc) return;
+  state.profile = {...acc}; if (acc.occasions?.length) state.occasion = acc.occasions[0];
+  persist(); endAuth();
+  const n = displayName(acc); toast(n ? `Welcome back, ${n}` : 'Welcome back', true);
+}
+function newCode(){ ob.code = String(Math.floor(100000 + Math.random()*900000)); ob.sentAt = Date.now(); ob.tries = 0; ob.locked = false; ob.busy = false; ob.resendAt = Date.now() + 30000; }
+function otpBoxes(){ return [...document.querySelectorAll('#otp input')]; }
+function otpValue(){ return otpBoxes().map(i=>i.value).join(''); }
+function otpSync(){
+  const v = otpValue(), b = $('#verifyBtn');
+  otpBoxes().forEach(i=>i.classList.toggle('filled', !!i.value));
+  if (b && !ob.busy) b.disabled = v.length < 6 || ob.locked;
+  if (v.length === 6) checkCode();
+}
+function tickResend(){
+  clearInterval(resendTimer);
+  const f = () => {
+    const b = $('#resend'); if (!b || !ob || ob.step !== 'verify'){ clearInterval(resendTimer); return; }
+    const left = Math.ceil((ob.resendAt - Date.now())/1000);
+    if (left > 0){ b.disabled = true; b.textContent = `Resend code in 0:${String(left).padStart(2,'0')}`; }
+    else { b.disabled = false; b.textContent = 'Resend code'; clearInterval(resendTimer); }
+  };
+  f(); resendTimer = setInterval(f, 1000);
+}
+function checkCode(){
+  if (!ob || ob.busy || ob.locked) return;
+  const v = otpValue(); if (v.length < 6) return;
+  ob.busy = true;
+  const g = $('#otp'), err = $('#otpErr'), btn = $('#verifyBtn');
+  g.classList.remove('bad'); g.classList.add('busy'); err.hidden = true;
+  btn.disabled = true; btn.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Checking';
+  setTimeout(()=>{
+    if (!ob || ob.step !== 'verify') return;
+    ob.busy = false; g.classList.remove('busy');
+    const expired = Date.now() - ob.sentAt > 10*60*1000;
+    if (v === ob.code && !expired){
+      g.classList.add('ok'); otpBoxes().forEach(i=>i.disabled = true); btn.innerHTML = ICON.check + 'Email verified';
+      setTimeout(()=>{ if (!ob) return;
+        if (ob.mode === 'signin') return signInAs(state.accounts[ob.p.email.toLowerCase()]);
+        ob.p.verified = true; ob.step = 'style'; ob.dir = 1; paintAuth(); }, 900);
+      return;
+    }
+    ob.tries++;
+    let msg = expired ? 'This code has expired. Tap “Resend code” to get a new one.' : 'That code isn’t right. Check the email and try again.';
+    if (!expired && ob.tries >= 5){ ob.locked = true; ob.resendAt = 0; msg = 'Too many tries. Get a new code to continue.'; }
+    err.textContent = msg; err.hidden = false; g.classList.add('bad'); nudge(g);
+    btn.textContent = 'Verify'; btn.disabled = true;
+    otpBoxes().forEach(i=>{ i.value = ''; i.classList.remove('filled'); i.disabled = !!ob.locked; });
+    if (ob.locked) tickResend(); else otpBoxes()[0].focus();
+  }, 900);
+}
+$('#auth').addEventListener('input', e=>{
+  const i = e.target; if (!i.matches('#otp input')) return;
+  const boxes = otpBoxes(), idx = boxes.indexOf(i), digits = i.value.replace(/\D/g,'');
+  $('#otp').classList.remove('bad'); $('#otpErr').hidden = true;
+  if (digits.length > 1){
+    digits.slice(0, 6-idx).split('').forEach((d,k)=>{ boxes[idx+k].value = d; });
+    boxes[Math.min(idx + digits.length, 5)].focus();
+  } else { i.value = digits; if (digits && idx < 5) boxes[idx+1].focus(); }
+  otpSync();
+});
+$('#auth').addEventListener('keydown', e=>{
+  const i = e.target; if (!i.matches || !i.matches('#otp input')) return;
+  const boxes = otpBoxes(), idx = boxes.indexOf(i);
+  if (e.key === 'Backspace' && !i.value && idx > 0){ e.preventDefault(); boxes[idx-1].value = ''; boxes[idx-1].focus(); otpSync(); }
+  else if (e.key === 'ArrowLeft' && idx > 0) boxes[idx-1].focus();
+  else if (e.key === 'ArrowRight' && idx < 5) boxes[idx+1].focus();
+  else if (e.key === 'Enter') checkCode();
+});
+$('#auth').addEventListener('paste', e=>{
+  const i = e.target; if (!i.matches || !i.matches('#otp input')) return;
+  const d = (e.clipboardData?.getData('text') || '').replace(/\D/g,'').slice(0,6); if (!d) return;
+  e.preventDefault(); const boxes = otpBoxes();
+  boxes.forEach(b=>b.value=''); d.split('').forEach((c,k)=>{ boxes[k].value = c; });
+  boxes[Math.min(d.length,5)].focus(); otpSync();
+});
+$('#auth').addEventListener('focusin', e=>{ if (e.target.matches('#otp input')) e.target.select(); });
+function nudge(el){ el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+function toggleIn(key, v, btn){ const arr = ob.p[key], on = arr.includes(v); ob.p[key] = on ? arr.filter(x=>x!==v) : [...arr, v]; btn.setAttribute('aria-pressed', !on); }
+
+$('#auth').addEventListener('submit', e=>{
+  e.preventDefault(); if (!ob) return;
+  if (e.target.id === 'signin'){
+    const email = $('#siEmail').value.trim(), err = $('#siErr');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ err.textContent = 'Enter an email like name@example.com.'; err.hidden = false; nudge(e.target); $('#siEmail').focus(); return; }
+    if (!state.accounts[email.toLowerCase()]){ ob.p.email = email; err.innerHTML = 'We couldn’t find an account with this email. <button class="link" type="button" data-ob="tosignup">Create one</button>'; err.hidden = false; nudge(e.target); return; }
+    ob.p.email = email; ob.mode = 'signin';
+    const b = e.target.querySelector('button[type=submit]'); b.disabled = true; b.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Sending code';
+    setTimeout(()=>{ if (!ob) return; newCode(); ob.step = 'verify'; ob.dir = 1; paintAuth(); }, 900);
+    return;
+  }
+  if (e.target.id !== 'signup') return;
+  const name = $('#suName').value.trim(), email = $('#suEmail').value.trim(), err = $('#suErr');
+  let msg = '';
+  if (!name) msg = 'Enter your first name.';
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) msg = 'Enter an email like name@example.com.';
+  if (!msg && state.accounts[email.toLowerCase()]){ ob.p.email = email; err.innerHTML = 'You already have an account with this email. <button class="link" type="button" data-ob="tosignin">Sign in instead</button>'; err.hidden = false; nudge(e.target); return; }
+  if (msg){ err.textContent = msg; err.hidden = false; nudge(e.target); (name ? $('#suEmail') : $('#suName')).focus(); return; }
+  ob.p.provider = 'email'; ob.p.name = name.slice(0,30); ob.p.email = email.slice(0,80);
+  const b = e.target.querySelector('button[type=submit]'); b.disabled = true; b.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Sending code';
+  setTimeout(()=>{ if (!ob) return; newCode(); ob.step = 'verify'; ob.dir = 1; paintAuth(); }, 900);
+});
+$('#auth').addEventListener('click', e=>{
+  const t = e.target.closest('button'); if (!t || !ob) return;
+  const d = t.dataset;
+  if (d.ob === 'skipall'){ state.profile = {guest:true, name:'', email:'', vibes:[], occasions:[], colors:[], avoid:[]}; persist(); return endAuth(); }
+  if (d.ob === 'tosignin'){ ob.mode = 'signin'; ob.step = 'signin'; ob.dir = 1; return paintAuth(); }
+  if (d.ob === 'tosignup'){ ob.mode = 'signup'; ob.step = 'signup'; ob.dir = -1; return paintAuth(); }
+  if (d.ob === 'google'){
+    t.disabled = true; $('#gLabel').innerHTML = '<span class="dots" style="--c:var(--fg)"><i></i><i></i><i></i></span>';
+    setTimeout(()=>{ if (!ob) return; if (state.accounts.google) return signInAs(state.accounts.google); ob.p.provider = 'google'; ob.p.name = ''; ob.p.email = ''; ob.step = 'style'; ob.dir = 1; paintAuth(); }, 900);
+    return;
+  }
+  if (d.ob === 'verify') return checkCode();
+  if (d.ob === 'resend'){
+    newCode(); $('#demoCode').textContent = ob.code.slice(0,3) + ' ' + ob.code.slice(3);
+    $('#otpErr').hidden = true; $('#otp').classList.remove('bad');
+    otpBoxes().forEach(i=>{ i.disabled = false; i.value = ''; i.classList.remove('filled'); });
+    $('#verifyBtn').disabled = true;
+    const m = $('#mailic'); m.classList.remove('again'); void m.offsetWidth; m.classList.add('again');
+    tickResend(); otpBoxes()[0].focus(); toast('New code sent', true); return;
+  }
+  if (d.ob === 'changeemail' || (d.ob === 'back' && ob.step === 'verify')){ clearInterval(resendTimer); ob.step = ob.mode === 'signin' ? 'signin' : 'signup'; ob.dir = -1; paintAuth(); if (d.ob === 'changeemail') setTimeout(()=>$(ob.mode === 'signin' ? '#siEmail' : '#suEmail')?.select(), 300); return; }
+  if (d.ob === 'back'){
+    const i = STEPS.indexOf(ob.step);
+    if (i === 0){ if (ob.editing) return endAuth(); ob.step = 'signup'; } else ob.step = STEPS[i-1];
+    ob.dir = -1; return paintAuth();
+  }
+  if (d.ob === 'next' || d.ob === 'skip'){
+    const i = STEPS.indexOf(ob.step);
+    if (i < STEPS.length-1){ ob.step = STEPS[i+1]; ob.dir = 1; return paintAuth(); }
+    saveProfile();
+    if (ob.editing){ endAuth(); toast('Preferences updated', true); return; }
+    ob.step = 'done'; ob.dir = 1; return paintAuth();
+  }
+  if (d.ob === 'finish') return endAuth();
+  if (d.vibe){
+    const on = ob.p.vibes.includes(d.vibe);
+    if (!on && ob.p.vibes.length >= 3){ nudge(t); const h = $('#vibeHint'); h.classList.add('flash'); setTimeout(()=>h.classList.remove('flash'), 1000); return; }
+    return toggleIn('vibes', d.vibe, t);
+  }
+  if (d.wk) return toggleIn('occasions', d.wk, t);
+  if (d.col) return toggleIn('colors', d.col, t);
+  if (d.av) return toggleIn('avoid', d.av, t);
+});
+
+/* ---------- Events ---------- */
+document.addEventListener('click', async e=>{
+  const t = e.target.closest('button, [data-act]'); if(!t) return;
+  if (t.closest('#auth')) return;
+  const a = t.dataset;
+  if (a.act==='me') return meSheet();
+  if (a.act==='editprefs'){ closeSheet(); return startOnboarding('style', true); }
+  if (a.act==='signup'){ closeSheet(); return startOnboarding('signup'); }
+  if (a.act==='signin'){ closeSheet(); return startOnboarding('signin'); }
+  if (a.act==='signout'){
+    if (t.dataset.armed){ state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('signin'), 250); return; }
+    t.dataset.armed='1'; t.textContent='Tap again to sign out'; return;
+  }
+  if (a.act==='add') return addSheet();
+  if (a.act==='close') return closeSheet();
+  if (a.act==='saveItem') return saveItem();
+  if (a.act==='style') return runStyle();
+  if (a.act==='reset'){
+    if (t.dataset.armed){ state.items = DEMO.map(x=>({...x})); state.saved = state.saved.filter(s=>s.itemIds.every(id=>byId(id))); state.results=null; persist(); render(); return toast('Sample wardrobe restored', true); }
+    t.dataset.armed='1'; t.textContent='Tap again to remove your own pieces'; setTimeout(()=>{ if(t.isConnected){ delete t.dataset.armed; t.textContent='Reset to sample wardrobe'; } }, 3000); return;
+  }
+  if (a.filter){ state.filter=a.filter; return render(); }
+  if (a.item) return detailSheet(a.item);
+  if (a.goto) return go(a.goto);
+  if (a.mode){ state.mode=a.mode; state.results=null; state.error=''; render(); return; }
+  if (a.occ){ state.occasion=a.occ; document.querySelectorAll('[data-occ]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.occ===a.occ)); return; }
+  if (a.findcat){ state.findCat=a.findcat; document.querySelectorAll('[data-findcat]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.findcat===a.findcat)); return; }
+  if (a.docc && draft){ const o=a.docc; draft.occasions = draft.occasions.includes(o)?draft.occasions.filter(x=>x!==o):[...draft.occasions,o]; t.setAttribute('aria-pressed', draft.occasions.includes(o)); return; }
+  if (a.del){
+    if (t.dataset.armed){ state.items = state.items.filter(i=>i.id!==a.del); persist(); closeSheet(); render(); return toast('Removed'); }
+    t.dataset.armed='1'; t.textContent='Tap again to remove'; return;
+  }
+  if (a.styleitem){
+    const i = byId(a.styleitem); closeSheet();
+    state.mode='occasion'; state.note=`Build it around my ${i.name}.`; state.occasion=(i.occasions||['weekend'])[0]; state.results=null;
+    go('style'); return;
+  }
+  if (a.heart!==undefined){
+    let o;
+    if (a.heart.startsWith('s:')) o = state.saved.find(s=>s.id===a.heart.slice(2));
+    else o = state.results && state.results.outfits[+a.heart];
+    if (!o) return;
+    const k = sig(o), idx = state.saved.findIndex(s=>sig(s)===k);
+    if (idx>=0){
+      state.saved.splice(idx,1); t.setAttribute('aria-pressed','false'); persist(); paintCount(true);
+      if (state.view==='saved'){ const card=t.closest('.look'); card.style.transition='opacity .3s, transform .3s'; card.style.opacity=0; card.style.transform='scale(.95)'; setTimeout(render,300); }
+      toast('Removed from saved');
+    } else {
+      state.saved.push({...o, id:'s'+Date.now().toString(36)}); persist();
+      t.setAttribute('aria-pressed','true'); burst(t); paintCount(true); toast('Saved to your outfits', true);
+    }
+  }
+});
+document.addEventListener('input', e=>{ if(e.target.id==='note') state.note=e.target.value; if(e.target.id==='fHex' && draft) draft.hex=e.target.value; });
+document.addEventListener('change', async e=>{
+  if (e.target.id==='addFile') takeAddFile(e.target.files[0]);
+  if (e.target.id==='findFile'){
+    const f = e.target.files[0]; if(!f || !f.type.startsWith('image/')) return;
+    state.find = {img: await shrink(f, 720), file:f, name:''}; state.results=null; state.error=''; render();
+  }
+});
+['dragover','dragleave','drop'].forEach(ev=>document.addEventListener(ev, async e=>{
+  const z = e.target.closest && e.target.closest('.drop'); if(!z) return;
+  e.preventDefault(); z.classList.toggle('over', ev==='dragover');
+  if (ev==='drop'){ const f=e.dataTransfer.files[0]; if(!f) return;
+    if (z.id==='addDrop') takeAddFile(f);
+    else { state.find={img:await shrink(f,720), file:f, name:''}; state.results=null; render(); } }
+}));
+document.addEventListener('paste', e=>{
+  const f = [...(e.clipboardData?.files||[])].find(x=>x.type.startsWith('image/')); if(!f) return;
+  if (draft && draft.step==='pick') takeAddFile(f);
+});
+
+/* mode segmented pill */
+const mo = new MutationObserver(()=>{ const seg=$('#modeSeg'); if(!seg) return; const b=seg.querySelector('[aria-selected="true"]'), p=seg.querySelector('.pill'); if(b&&p){ p.style.width=b.offsetWidth+'px'; p.style.transform=`translateX(${b.offsetLeft}px)`; } });
+mo.observe($('#app'), {childList:true});
+
+if (state.profile?.occasions?.length) state.occasion = state.profile.occasions[0];
+render(); requestAnimationFrame(movePill); paintAI(); paintMe();
+if (!state.profile) startOnboarding('signup');
+</script>
+
+</body>
+</html>
