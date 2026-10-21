@@ -319,6 +319,7 @@ body.locked{overflow:hidden}
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="auth" id="auth" role="dialog" aria-modal="true" aria-label="Sign up" hidden></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 /* ---------- Data ---------- */
 const DEMO = [
@@ -344,11 +345,29 @@ const KEY = 'stylist.v1';
 
 let state = {items:DEMO.map(x=>({...x})), saved:[], view:'wardrobe', filter:'all', mode:'occasion', occasion:'work', note:'', results:null, loading:false, find:null, findCat:'top', error:''};
 state.profile = null;
-try{ const s = JSON.parse(localStorage.getItem(KEY)||'null'); if(s){ state.items = s.items||state.items; state.saved = s.saved||[]; state.profile = s.profile||null; state.accounts = s.accounts||{}; } }catch(e){}
-state.accounts = state.accounts || {};
-const acctKey = p => p.provider==='google' ? 'google' : String(p.email||'').toLowerCase();
-if (state.profile && !state.profile.guest && !state.accounts[acctKey(state.profile)]) state.accounts[acctKey(state.profile)] = {...state.profile};
-function persist(){ try{ localStorage.setItem(KEY, JSON.stringify({items:state.items,saved:state.saved,profile:state.profile,accounts:state.accounts})); }catch(e){ toast('Storage is full. Remove a few photos.'); } }
+try{ const s = JSON.parse(localStorage.getItem(KEY)||'null'); if(s){ state.items = s.items||state.items; state.saved = s.saved||[]; state.profile = s.profile||null; } }catch(e){}
+function persist(){ try{ localStorage.setItem(KEY, JSON.stringify({items:state.items,saved:state.saved,profile:state.profile})); }catch(e){ toast('Storage is full. Remove a few photos.'); } }
+
+/* ---------- Accounts (Supabase) ---------- */
+// The publishable key is meant to be public; never put the secret key in this page.
+const SB_URL = 'https://rofoseeoftutmmkuuzfk.supabase.co';
+const SB_KEY = 'sb_publishable_R0QGGx2xRxwneDmEdwZoOw_MWRe_v7F';
+const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+let googleOn = false;
+fetch(SB_URL + '/auth/v1/settings', {headers:{apikey:SB_KEY}}).then(r=>r.json()).then(s=>{ googleOn = !!s.external?.google; }).catch(()=>{});
+const firstName = m => (m.first_name || String(m.full_name || m.name || '').split(' ')[0] || '').slice(0,30);
+function profileFromUser(u){
+  const m = u.user_metadata || {};
+  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), email:u.email||'', vibes:m.vibes||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guest:false};
+}
+function authErr(e, fallback){
+  const c = e?.code || '', s = e?.status;
+  if (c==='otp_disabled' || /signups not allowed/i.test(e?.message||'')) return 'nouser';
+  if (c==='over_email_send_rate_limit') return 'Too many emails were sent just now. Wait a few minutes and try again.';
+  if (s===429) return 'Too many tries. Wait a minute and try again.';
+  if (c==='otp_expired' || /expired|invalid/i.test(e?.message||'')) return 'That code isn’t right or has expired. Check the email and try again.';
+  return fallback;
+}
 
 /* ---------- AI ---------- */
 let sample = null, canImages = false, aiReady = false;
@@ -766,7 +785,7 @@ function meSheet(){
   const tags = (arr, f) => arr.length ? `<div class="tags">${arr.map(f).join('')}</div>` : '<span class="cmeta" style="margin:0">Not set</span>';
   const n = displayName(p), em = displayEmail(p);
   const av = isG(p) && viewer.avatar ? `<img src="${esc(viewer.avatar)}" alt="">` : n ? esc(n[0].toUpperCase()) : PERSON;
-  openSheet(`<div class="prof"><span class="me xl">${av}</span><div style="min-width:0"><h2>${esc(n || 'Your profile')}</h2><p class="sub" style="margin:0;overflow:hidden;text-overflow:ellipsis">${esc(em)}${isG(p) ? (em?' · ':'') + 'Signed in with Google (demo)' : ''}</p></div></div>
+  openSheet(`<div class="prof"><span class="me xl">${av}</span><div style="min-width:0"><h2>${esc(n || 'Your profile')}</h2><p class="sub" style="margin:0;overflow:hidden;text-overflow:ellipsis">${esc(em)}${isG(p) ? (em?' · ':'') + 'Signed in with Google' : ''}</p></div></div>
     <div class="sec"><div class="label">Style</div>${tags(p.vibes, v=>`<span class="tag">${esc(vibeName(v))}</span>`)}</div>
     <div class="sec"><div class="label">Dresses for</div>${tags(p.occasions, o=>`<span class="tag">${esc(occLabel(o))}</span>`)}</div>
     <div class="sec"><div class="label">Favourite colors</div>${tags(p.colors, c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`)}</div>
@@ -775,14 +794,7 @@ function meSheet(){
 }
 
 let viewer = {name:'', email:'', avatar:''};
-(async () => {
-  try{
-    const u = window.claude ? await claude.use('user') : null; if (!u) return;
-    const m = await u.me();
-    viewer = {name:(m.name||'').split(' ')[0], email:m.email||'', avatar: m.name ? m.avatarUrl : ''};
-    paintMe(); if (!ob) render(); else if (ob.step==='done') paintAuth();
-  }catch(e){}
-})();
+function setViewer(u){ const m = u?.user_metadata || {}; viewer = {name:firstName(m), email:u?.email||'', avatar:m.avatar_url||m.picture||''}; }
 const isG = p => p && p.provider==='google';
 const displayName = p => (p && (p.name || (isG(p) ? viewer.name : ''))) || '';
 const displayEmail = p => (p && (p.email || (isG(p) ? viewer.email : ''))) || '';
@@ -800,10 +812,11 @@ function endAuth(){
   ob = null; paintMe(); render(); requestAnimationFrame(movePill);
 }
 function saveProfile(){
-  state.profile = {...ob.p, guest:false};
-  state.accounts[acctKey(state.profile)] = {...state.profile};
-  if (state.profile.occasions.length) state.occasion = state.profile.occasions[0];
+  const p = state.profile = {...ob.p, guest:false, onboarded:true};
+  if (p.occasions.length) state.occasion = p.occasions[0];
   persist();
+  sb?.auth.updateUser({data:{first_name:p.name, vibes:p.vibes, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true}})
+    .then(({error})=>{ if (error) toast('Couldn’t save your style to your account. Try again later.'); });
 }
 function paintAuth(){
   const el = $('#auth'), o = ob, p = o.p, anim = o.dir < 0 ? 'step-back' : 'step-in';
@@ -823,7 +836,7 @@ function paintAuth(){
           <button class="btn wide" type="submit">Sign up with email</button>
         </form>
         <p class="fine" style="font-size:14px">Already have an account? <button class="link" type="button" data-ob="tosignin">Sign in</button></p>
-        <p class="fine">Demo only: sign-in is simulated, no account is created and nothing is sent.</p>
+        <p class="fine">We’ll email you a 6-digit code. No password needed.</p>
         <button class="link center" type="button" data-ob="skipall">Just look around</button>
       </div></div>`;
     el.scrollTop = 0;
@@ -844,7 +857,7 @@ function paintAuth(){
           <button class="btn wide" type="submit">Continue with email</button>
         </form>
         <p class="fine" style="font-size:14px">New to Stylist? <button class="link" type="button" data-ob="tosignup">Create an account</button></p>
-        <p class="fine">Demo only: sign-in is simulated and nothing is sent.</p>
+        <p class="fine">We’ll email you a 6-digit code to sign in.</p>
       </div></div>`;
     el.scrollTop = 0; return;
   }
@@ -854,10 +867,9 @@ function paintAuth(){
       <div class="ob-body ${anim}">
         <span class="mailic" id="mailic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7l8.5 6 8.5-6"/></svg></span>
         <h1 class="big" style="margin-top:10px">Check your email</h1>
-        <p class="sub">We sent a 6-digit code to <b style="color:var(--fg)">${esc(p.email)}</b>. It works for 10 minutes.</p>
+        <p class="sub">We sent a 6-digit code to <b style="color:var(--fg)">${esc(p.email)}</b>. It can take a minute to arrive, so check your spam folder too.</p>
         <div class="otp" id="otp" role="group" aria-label="Verification code">${[0,1,2,3,4,5].map(n=>`<input inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="${n===0?'one-time-code':'off'}" aria-label="Digit ${n+1}">`).join('')}</div>
         <p class="err" id="otpErr" role="alert" hidden></p>
-        <div class="demo-code">Demo: no email is really sent. Your code is <b id="demoCode">${o.code.slice(0,3)} ${o.code.slice(3)}</b></div>
         <div class="row" style="justify-content:space-between"><button class="link" data-ob="resend" id="resend" disabled>Resend code</button><button class="link" data-ob="changeemail">Change email</button></div>
       </div>
       <div class="ob-foot"><button class="btn wide" data-ob="verify" id="verifyBtn" disabled>Verify</button></div></div>`;
@@ -899,7 +911,13 @@ function signInAs(acc){
   persist(); endAuth();
   const n = displayName(acc); toast(n ? `Welcome back, ${n}` : 'Welcome back', true);
 }
-function newCode(){ ob.code = String(Math.floor(100000 + Math.random()*900000)); ob.sentAt = Date.now(); ob.tries = 0; ob.locked = false; ob.busy = false; ob.resendAt = Date.now() + 30000; }
+function codeSent(){ ob.tries = 0; ob.locked = false; ob.busy = false; ob.resendAt = Date.now() + 60000; }
+async function sendCode(){
+  if (!sb) return {message:'offline'};
+  const signup = ob.mode === 'signup';
+  const {error} = await sb.auth.signInWithOtp({email:ob.p.email, options:{shouldCreateUser:signup, data: signup ? {first_name:ob.p.name} : undefined}});
+  return error;
+}
 function otpBoxes(){ return [...document.querySelectorAll('#otp input')]; }
 function otpValue(){ return otpBoxes().map(i=>i.value).join(''); }
 function otpSync(){
@@ -913,37 +931,36 @@ function tickResend(){
   const f = () => {
     const b = $('#resend'); if (!b || !ob || ob.step !== 'verify'){ clearInterval(resendTimer); return; }
     const left = Math.ceil((ob.resendAt - Date.now())/1000);
-    if (left > 0){ b.disabled = true; b.textContent = `Resend code in 0:${String(left).padStart(2,'0')}`; }
+    if (left > 0){ b.disabled = true; b.textContent = `Resend code in ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`; }
     else { b.disabled = false; b.textContent = 'Resend code'; clearInterval(resendTimer); }
   };
   f(); resendTimer = setInterval(f, 1000);
 }
-function checkCode(){
+async function checkCode(){
   if (!ob || ob.busy || ob.locked) return;
   const v = otpValue(); if (v.length < 6) return;
   ob.busy = true;
   const g = $('#otp'), err = $('#otpErr'), btn = $('#verifyBtn');
   g.classList.remove('bad'); g.classList.add('busy'); err.hidden = true;
   btn.disabled = true; btn.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Checking';
-  setTimeout(()=>{
-    if (!ob || ob.step !== 'verify') return;
-    ob.busy = false; g.classList.remove('busy');
-    const expired = Date.now() - ob.sentAt > 10*60*1000;
-    if (v === ob.code && !expired){
-      g.classList.add('ok'); otpBoxes().forEach(i=>i.disabled = true); btn.innerHTML = ICON.check + 'Email verified';
-      setTimeout(()=>{ if (!ob) return;
-        if (ob.mode === 'signin') return signInAs(state.accounts[ob.p.email.toLowerCase()]);
-        ob.p.verified = true; ob.step = 'style'; ob.dir = 1; paintAuth(); }, 900);
-      return;
-    }
-    ob.tries++;
-    let msg = expired ? 'This code has expired. Tap “Resend code” to get a new one.' : 'That code isn’t right. Check the email and try again.';
-    if (!expired && ob.tries >= 5){ ob.locked = true; ob.resendAt = 0; msg = 'Too many tries. Get a new code to continue.'; }
-    err.textContent = msg; err.hidden = false; g.classList.add('bad'); nudge(g);
-    btn.textContent = 'Verify'; btn.disabled = true;
-    otpBoxes().forEach(i=>{ i.value = ''; i.classList.remove('filled'); i.disabled = !!ob.locked; });
-    if (ob.locked) tickResend(); else otpBoxes()[0].focus();
-  }, 900);
+  const {data, error} = sb ? await sb.auth.verifyOtp({email:ob.p.email, token:v, type:'email'}) : {error:{}};
+  if (!ob || ob.step !== 'verify') return;
+  ob.busy = false; g.classList.remove('busy');
+  if (!error && data?.user){
+    const acc = profileFromUser(data.user); setViewer(data.user);
+    g.classList.add('ok'); otpBoxes().forEach(i=>i.disabled = true); btn.innerHTML = ICON.check + 'Email verified';
+    setTimeout(()=>{ if (!ob) return;
+      if (acc.onboarded) return signInAs(acc);
+      ob.p.name = ob.p.name || acc.name; ob.p.verified = true; ob.step = 'style'; ob.dir = 1; paintAuth(); }, 900);
+    return;
+  }
+  ob.tries++;
+  let msg = authErr(error, 'Couldn’t check the code. Check your connection and try again.');
+  if (ob.tries >= 5 || error?.status === 429){ ob.locked = true; ob.resendAt = 0; msg = 'Too many tries. Get a new code to continue.'; }
+  err.textContent = msg; err.hidden = false; g.classList.add('bad'); nudge(g);
+  btn.textContent = 'Verify'; btn.disabled = true;
+  otpBoxes().forEach(i=>{ i.value = ''; i.classList.remove('filled'); i.disabled = !!ob.locked; });
+  if (ob.locked) tickResend(); else otpBoxes()[0].focus();
 }
 $('#auth').addEventListener('input', e=>{
   const i = e.target; if (!i.matches('#otp input')) return;
@@ -974,27 +991,34 @@ $('#auth').addEventListener('focusin', e=>{ if (e.target.matches('#otp input')) 
 function nudge(el){ el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
 function toggleIn(key, v, btn){ const arr = ob.p[key], on = arr.includes(v); ob.p[key] = on ? arr.filter(x=>x!==v) : [...arr, v]; btn.setAttribute('aria-pressed', !on); }
 
+async function submitEmail(form, err){
+  const b = form.querySelector('button[type=submit]'), label = b.textContent;
+  b.disabled = true; b.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Sending code';
+  const error = await sendCode();
+  if (!ob) return;
+  if (!error){ codeSent(); ob.step = 'verify'; ob.dir = 1; return paintAuth(); }
+  b.disabled = false; b.textContent = label;
+  const msg = authErr(error, 'Couldn’t send the code. Check your connection and try again.');
+  if (msg === 'nouser') err.innerHTML = 'We couldn’t find an account with this email. <button class="link" type="button" data-ob="tosignup">Create one</button>';
+  else err.textContent = msg;
+  err.hidden = false; nudge(form);
+}
 $('#auth').addEventListener('submit', e=>{
   e.preventDefault(); if (!ob) return;
   if (e.target.id === 'signin'){
     const email = $('#siEmail').value.trim(), err = $('#siErr');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ err.textContent = 'Enter an email like name@example.com.'; err.hidden = false; nudge(e.target); $('#siEmail').focus(); return; }
-    if (!state.accounts[email.toLowerCase()]){ ob.p.email = email; err.innerHTML = 'We couldn’t find an account with this email. <button class="link" type="button" data-ob="tosignup">Create one</button>'; err.hidden = false; nudge(e.target); return; }
-    ob.p.email = email; ob.mode = 'signin';
-    const b = e.target.querySelector('button[type=submit]'); b.disabled = true; b.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Sending code';
-    setTimeout(()=>{ if (!ob) return; newCode(); ob.step = 'verify'; ob.dir = 1; paintAuth(); }, 900);
-    return;
+    ob.p.email = email.slice(0,80); ob.mode = 'signin'; err.hidden = true;
+    return submitEmail(e.target, err);
   }
   if (e.target.id !== 'signup') return;
   const name = $('#suName').value.trim(), email = $('#suEmail').value.trim(), err = $('#suErr');
   let msg = '';
   if (!name) msg = 'Enter your first name.';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) msg = 'Enter an email like name@example.com.';
-  if (!msg && state.accounts[email.toLowerCase()]){ ob.p.email = email; err.innerHTML = 'You already have an account with this email. <button class="link" type="button" data-ob="tosignin">Sign in instead</button>'; err.hidden = false; nudge(e.target); return; }
   if (msg){ err.textContent = msg; err.hidden = false; nudge(e.target); (name ? $('#suEmail') : $('#suName')).focus(); return; }
-  ob.p.provider = 'email'; ob.p.name = name.slice(0,30); ob.p.email = email.slice(0,80);
-  const b = e.target.querySelector('button[type=submit]'); b.disabled = true; b.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Sending code';
-  setTimeout(()=>{ if (!ob) return; newCode(); ob.step = 'verify'; ob.dir = 1; paintAuth(); }, 900);
+  ob.p.provider = 'email'; ob.p.name = name.slice(0,30); ob.p.email = email.slice(0,80); ob.mode = 'signup'; err.hidden = true;
+  submitEmail(e.target, err);
 });
 $('#auth').addEventListener('click', e=>{
   const t = e.target.closest('button'); if (!t || !ob) return;
@@ -1003,18 +1027,27 @@ $('#auth').addEventListener('click', e=>{
   if (d.ob === 'tosignin'){ ob.mode = 'signin'; ob.step = 'signin'; ob.dir = 1; return paintAuth(); }
   if (d.ob === 'tosignup'){ ob.mode = 'signup'; ob.step = 'signup'; ob.dir = -1; return paintAuth(); }
   if (d.ob === 'google'){
+    if (!sb || !googleOn) return toast('Google sign-in isn’t set up yet. Use your email for now.');
     t.disabled = true; $('#gLabel').innerHTML = '<span class="dots" style="--c:var(--fg)"><i></i><i></i><i></i></span>';
-    setTimeout(()=>{ if (!ob) return; if (state.accounts.google) return signInAs(state.accounts.google); ob.p.provider = 'google'; ob.p.name = ''; ob.p.email = ''; ob.step = 'style'; ob.dir = 1; paintAuth(); }, 900);
+    sb.auth.signInWithOAuth({provider:'google', options:{redirectTo: location.origin + location.pathname}}).then(({error})=>{
+      if (!error) return;
+      t.disabled = false; $('#gLabel').textContent = 'Continue with Google'; toast('Couldn’t open Google sign-in. Try again.');
+    });
     return;
   }
   if (d.ob === 'verify') return checkCode();
   if (d.ob === 'resend'){
-    newCode(); $('#demoCode').textContent = ob.code.slice(0,3) + ' ' + ob.code.slice(3);
-    $('#otpErr').hidden = true; $('#otp').classList.remove('bad');
-    otpBoxes().forEach(i=>{ i.disabled = false; i.value = ''; i.classList.remove('filled'); });
-    $('#verifyBtn').disabled = true;
-    const m = $('#mailic'); m.classList.remove('again'); void m.offsetWidth; m.classList.add('again');
-    tickResend(); otpBoxes()[0].focus(); toast('New code sent', true); return;
+    t.disabled = true;
+    sendCode().then(error=>{
+      if (!ob || ob.step !== 'verify') return;
+      if (error){ t.disabled = false; $('#otpErr').textContent = authErr(error, 'Couldn’t send a new code. Try again.'); $('#otpErr').hidden = false; return; }
+      codeSent(); $('#otpErr').hidden = true; $('#otp').classList.remove('bad');
+      otpBoxes().forEach(i=>{ i.disabled = false; i.value = ''; i.classList.remove('filled'); });
+      $('#verifyBtn').disabled = true;
+      const m = $('#mailic'); m.classList.remove('again'); void m.offsetWidth; m.classList.add('again');
+      tickResend(); otpBoxes()[0].focus(); toast('New code sent', true);
+    });
+    return;
   }
   if (d.ob === 'changeemail' || (d.ob === 'back' && ob.step === 'verify')){ clearInterval(resendTimer); ob.step = ob.mode === 'signin' ? 'signin' : 'signup'; ob.dir = -1; paintAuth(); if (d.ob === 'changeemail') setTimeout(()=>$(ob.mode === 'signin' ? '#siEmail' : '#suEmail')?.select(), 300); return; }
   if (d.ob === 'back'){
@@ -1050,7 +1083,7 @@ document.addEventListener('click', async e=>{
   if (a.act==='signup'){ closeSheet(); return startOnboarding('signup'); }
   if (a.act==='signin'){ closeSheet(); return startOnboarding('signin'); }
   if (a.act==='signout'){
-    if (t.dataset.armed){ state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('signin'), 250); return; }
+    if (t.dataset.armed){ sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('signin'), 250); return; }
     t.dataset.armed='1'; t.textContent='Tap again to sign out'; return;
   }
   if (a.act==='add') return addSheet();
@@ -1119,7 +1152,17 @@ mo.observe($('#app'), {childList:true});
 
 if (state.profile?.occasions?.length) state.occasion = state.profile.occasions[0];
 render(); requestAnimationFrame(movePill); paintAI(); paintMe();
-if (!state.profile) startOnboarding('signup');
+(async () => {
+  const u = sb ? (await sb.auth.getSession().catch(()=>({data:{}}))).data?.session?.user : null;
+  if (u){
+    const acc = profileFromUser(u); setViewer(u);
+    if (acc.onboarded){ state.profile = acc; if (acc.occasions.length) state.occasion = acc.occasions[0]; persist(); paintMe(); render(); return; }
+    startOnboarding('style'); ob.p = {...ob.p, provider:acc.provider, name:acc.name, email:acc.email}; return;
+  }
+  // No real session: drop any profile left over from the old demo sign-in.
+  if (state.profile && !state.profile.guest){ state.profile = null; persist(); paintMe(); }
+  if (!state.profile) startOnboarding('signup');
+})();
 </script>
 
 </body>
