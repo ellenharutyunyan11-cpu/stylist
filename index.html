@@ -379,6 +379,74 @@ function authErr(e, fallback){
   return fallback;
 }
 
+/* ---------- Cloud wardrobe (supabase/wardrobe.sql) ---------- */
+// While someone is signed in for real, their wardrobe and saved outfits live in Supabase
+// (row-level security keeps each person to their own rows; photos sit in a private bucket).
+// Guests and test mode keep everything in this browser as before.
+let cloud = null;
+const BUCKET = 'wardrobe';
+const itemRow = (i, path, at) => ({id:i.id, name:String(i.name).slice(0,60), category:i.category, kind:i.kind||null, color:String(i.color||'').slice(0,60),
+  hex:/^#[0-9a-f]{6}$/i.test(i.hex||'') ? i.hex : null, pattern:i.pattern||null, style:i.style||null, occasions:(i.occasions||[]).slice(0,10), photo_path:path||null, ...(at ? {created_at:at} : {})});
+const outfitRow = (o, path, at) => ({id:o.id, title:String(o.title||'Outfit').slice(0,60), why:String(o.why||'').slice(0,1000), occasion:o.occasion||null,
+  item_ids:(o.itemIds||[]).slice(0,12), find_name:o.find ? String(o.find.name||'').slice(0,80) : null, find_path:path||null, ...(at ? {created_at:at} : {})});
+async function upPhoto(kind, id, dataUrl){
+  if (!dataUrl || !dataUrl.startsWith('data:')) return null;
+  const path = `${cloud.id}/${kind}-${id}.jpg`, blob = await (await fetch(dataUrl)).blob();
+  const {error} = await sb.storage.from(BUCKET).upload(path, blob, {contentType:blob.type || 'image/jpeg', upsert:true});
+  if (error) throw error;
+  return path;
+}
+function cloudDo(job){
+  if (!cloud) return;
+  job().catch(()=>toast('Couldn’t save that to your account. Check your connection.'));
+}
+async function cloudAddItems(items){
+  const now = Date.now();   // newest first in the app, so give earlier list entries later timestamps
+  const rows = await Promise.all(items.map(async (i, k)=>{ const p = await upPhoto('item', i.id, i.img); if (p) i.photo = p; return itemRow(i, p, new Date(now - k).toISOString()); }));
+  if (!rows.length) return;
+  const {error} = await sb.from('wardrobe_items').insert(rows); if (error) throw error;
+}
+async function cloudAddOutfits(list){
+  const now = Date.now();   // oldest first in the app
+  const rows = await Promise.all(list.map(async (o, k)=>{ const p = await upPhoto('find', o.id, o.find?.img); if (p) o.find.photo = p; return outfitRow(o, p, new Date(now - (list.length - k)).toISOString()); }));
+  if (!rows.length) return;
+  const {error} = await sb.from('saved_outfits').insert(rows); if (error) throw error;
+}
+async function cloudRemove(table, ids, photos){
+  if (!ids.length) return;
+  const {error} = await sb.from(table).delete().eq('user_id', cloud.id).in('id', ids); if (error) throw error;
+  const files = photos.filter(Boolean); if (files.length) await sb.storage.from(BUCKET).remove(files);
+}
+async function cloudLoad(u){
+  if (!sb || !u?.id || testAuth) return;
+  cloud = u;
+  const [it, of] = await Promise.all([
+    sb.from('wardrobe_items').select('*').order('created_at', {ascending:false}),
+    sb.from('saved_outfits').select('*').order('created_at', {ascending:true})]);
+  if (cloud !== u) return;
+  if (it.error || of.error){ cloud = null; console.warn('Wardrobe tables not reachable yet; keeping it on this device.', it.error || of.error); return; }
+  if (!it.data.length && !of.data.length && !u.user_metadata?.wardrobe_ready){
+    // First sign-in on this account: move what's on this device into it.
+    try{
+      await cloudAddItems(state.items); await cloudAddOutfits(state.saved);
+      await sb.auth.updateUser({data:{wardrobe_ready:true}});
+      persist();
+    }catch(e){ toast('Couldn’t copy your wardrobe to your account. Try again later.'); }
+    return;
+  }
+  const paths = [...it.data.map(r=>r.photo_path), ...of.data.map(r=>r.find_path)].filter(Boolean), urls = {};
+  if (paths.length){
+    const {data} = await sb.storage.from(BUCKET).createSignedUrls(paths, 60*60*12);
+    (data || []).forEach(x=>{ if (x.signedUrl) urls[x.path] = x.signedUrl; });
+  }
+  if (cloud !== u) return;
+  state.items = it.data.map(r=>({id:r.id, name:r.name, category:r.category, kind:r.kind||undefined, color:r.color||'', hex:r.hex||'#cccccc', pattern:r.pattern||undefined,
+    style:r.style||undefined, occasions:r.occasions||[], img:urls[r.photo_path]||undefined, photo:r.photo_path||undefined}));
+  state.saved = of.data.map(r=>({id:r.id, title:r.title, why:r.why||'', occasion:r.occasion||undefined, itemIds:r.item_ids||[],
+    find:(r.find_path || r.find_name) ? {name:r.find_name||'', img:urls[r.find_path]||'', photo:r.find_path||undefined} : undefined}));
+  persist(); render(); paintCount();
+}
+
 /* ---------- AI ---------- */
 let sample = null, canImages = false, aiReady = false;
 (async () => {
@@ -728,6 +796,7 @@ function saveItem(){
   if (!d.name){ $('#fName').focus(); return toast('Give it a name'); }
   const item = {id:'u'+Date.now().toString(36), name:d.name, category:d.category, color:d.color||'—', hex:d.hex, style:d.style, occasions:d.occasions.length?d.occasions:['weekend'], img:d.img, _new:true};
   state.items.unshift(item); persist(); closeSheet();
+  cloudDo(()=>cloudAddItems([item]).then(persist));
   state.filter='all'; if(state.view!=='wardrobe') go('wardrobe'); else render();
   setTimeout(()=>{ delete item._new; }, 800);
   toast('Added to your wardrobe', true);
@@ -960,7 +1029,7 @@ async function checkCode(){
   if (!ob || ob.phase !== 'code') return;
   ob.busy = false; g.classList.remove('busy');
   if (!error && data?.user){
-    const acc = profileFromUser(data.user); setViewer(data.user);
+    const acc = profileFromUser(data.user); setViewer(data.user); cloudLoad(data.user);
     g.classList.add('ok'); otpBoxes().forEach(i=>i.disabled = true); btn.innerHTML = ICON.check + 'Email verified';
     clearInterval(resendTimer);
     setTimeout(()=>{ if (!ob) return;
@@ -1096,7 +1165,11 @@ document.addEventListener('click', async e=>{
   if (a.act==='editprefs'){ closeSheet(); return startOnboarding('style', true); }
   if (a.act==='signup' || a.act==='signin'){ closeSheet(); return startOnboarding('email'); }
   if (a.act==='signout'){
-    if (t.dataset.armed){ sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('email'), 250); return; }
+    if (t.dataset.armed){
+      // Don't leave an account's wardrobe on a shared device after signing out.
+      if (cloud){ cloud = null; state.items = DEMO.map(x=>({...x})); state.saved = []; state.results = null; render(); paintCount(); }
+      sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('email'), 250); return;
+    }
     t.dataset.armed='1'; t.textContent='Tap again to sign out'; return;
   }
   if (a.act==='add') return addSheet();
@@ -1104,7 +1177,18 @@ document.addEventListener('click', async e=>{
   if (a.act==='saveItem') return saveItem();
   if (a.act==='style') return runStyle();
   if (a.act==='reset'){
-    if (t.dataset.armed){ state.items = DEMO.map(x=>({...x})); state.saved = state.saved.filter(s=>s.itemIds.every(id=>byId(id))); state.results=null; persist(); render(); return toast('Sample wardrobe restored', true); }
+    if (t.dataset.armed){
+      const oldItems = state.items;
+      state.items = DEMO.map(x=>({...x}));
+      const gone = state.saved.filter(s=>!s.itemIds.every(id=>byId(id)));
+      state.saved = state.saved.filter(s=>s.itemIds.every(id=>byId(id))); state.results=null; persist(); render();
+      cloudDo(async ()=>{
+        await cloudRemove('wardrobe_items', oldItems.map(i=>i.id), oldItems.map(i=>i.photo));
+        await cloudRemove('saved_outfits', gone.map(s=>s.id), gone.map(s=>s.find?.photo));
+        await cloudAddItems(state.items);
+      });
+      return toast('Sample wardrobe restored', true);
+    }
     t.dataset.armed='1'; t.textContent='Tap again to remove your own pieces'; setTimeout(()=>{ if(t.isConnected){ delete t.dataset.armed; t.textContent='Reset to sample wardrobe'; } }, 3000); return;
   }
   if (a.filter){ state.filter=a.filter; return render(); }
@@ -1115,7 +1199,11 @@ document.addEventListener('click', async e=>{
   if (a.findcat){ state.findCat=a.findcat; document.querySelectorAll('[data-findcat]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.findcat===a.findcat)); return; }
   if (a.docc && draft){ const o=a.docc; draft.occasions = draft.occasions.includes(o)?draft.occasions.filter(x=>x!==o):[...draft.occasions,o]; t.setAttribute('aria-pressed', draft.occasions.includes(o)); return; }
   if (a.del){
-    if (t.dataset.armed){ state.items = state.items.filter(i=>i.id!==a.del); persist(); closeSheet(); render(); return toast('Removed'); }
+    if (t.dataset.armed){
+      const it = byId(a.del); state.items = state.items.filter(i=>i.id!==a.del); persist(); closeSheet(); render();
+      cloudDo(()=>cloudRemove('wardrobe_items', [a.del], [it?.photo]));
+      return toast('Removed');
+    }
     t.dataset.armed='1'; t.textContent='Tap again to remove'; return;
   }
   if (a.styleitem){
@@ -1130,11 +1218,14 @@ document.addEventListener('click', async e=>{
     if (!o) return;
     const k = sig(o), idx = state.saved.findIndex(s=>sig(s)===k);
     if (idx>=0){
-      state.saved.splice(idx,1); t.setAttribute('aria-pressed','false'); persist(); paintCount(true);
+      const [gone] = state.saved.splice(idx,1); t.setAttribute('aria-pressed','false'); persist(); paintCount(true);
+      cloudDo(()=>cloudRemove('saved_outfits', [gone.id], [gone.find?.photo]));
       if (state.view==='saved'){ const card=t.closest('.look'); card.style.transition='opacity .3s, transform .3s'; card.style.opacity=0; card.style.transform='scale(.95)'; setTimeout(render,300); }
       toast('Removed from saved');
     } else {
-      state.saved.push({...o, id:'s'+Date.now().toString(36)}); persist();
+      const copy = {...o, id:'s'+Date.now().toString(36), find:o.find ? {...o.find} : o.find};
+      state.saved.push(copy); persist();
+      cloudDo(()=>cloudAddOutfits([copy]).then(persist));
       t.setAttribute('aria-pressed','true'); burst(t); paintCount(true); toast('Saved to your outfits', true);
     }
   }
@@ -1168,7 +1259,7 @@ render(); requestAnimationFrame(movePill); paintAI(); paintMe();
 (async () => {
   const u = sb ? (await sb.auth.getSession().catch(()=>({data:{}}))).data?.session?.user : null;
   if (u){
-    const acc = profileFromUser(u); setViewer(u);
+    const acc = profileFromUser(u); setViewer(u); cloudLoad(u);
     if (acc.onboarded){ state.profile = acc; if (acc.occasions.length) state.occasion = acc.occasions[0]; persist(); paintMe(); render(); return; }
     startOnboarding('name'); ob.p = {...ob.p, provider:acc.provider, name:acc.name, last:acc.last, email:acc.email}; paintAuth(); return;
   }
