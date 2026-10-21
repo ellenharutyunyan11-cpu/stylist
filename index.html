@@ -423,6 +423,7 @@ function authErr(e, fallback){
   if (c==='otp_disabled' || /signups not allowed/i.test(e?.message||'')) return 'nouser';
   if (c==='over_email_send_rate_limit') return 'Too many emails were sent just now. Wait a few minutes and try again.';
   if (s===429) return 'Too many tries. Wait a minute and try again.';
+  if (s>=500) return 'Our email service isn’t responding right now. Try again in a few minutes.';
   if (c==='otp_expired' || /expired|invalid/i.test(e?.message||'')) return 'That code isn’t right or has expired. Check the email and try again.';
   return fallback;
 }
