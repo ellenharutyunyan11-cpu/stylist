@@ -364,10 +364,11 @@ function modeLine(){
   return testAuth ? `<p class="fine">Test mode: codes show on screen and no email is sent. <button class="link" type="button" data-ob="realmode">Use real email</button></p>`
     : `<p class="fine">Real emails are on. <button class="link" type="button" data-ob="testmode">Switch to test mode</button></p>`;
 }
-const firstName = m =>(m.first_name || String(m.full_name || m.name || '').split(' ')[0] || '').slice(0,30);
+const firstName = m => (m.first_name || String(m.full_name || m.name || '').split(' ')[0] || '').slice(0,30);
+const lastName = m => (m.last_name || String(m.full_name || m.name || '').split(' ').slice(1).join(' ') || '').slice(0,40);
 function profileFromUser(u){
   const m = u.user_metadata || {};
-  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), email:u.email||'', vibes:m.vibes||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guest:false};
+  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), last:lastName(m), email:u.email||'', vibes:m.vibes||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guest:false};
 }
 function authErr(e, fallback){
   const c = e?.code || '', s = e?.status;
@@ -750,7 +751,7 @@ const VIBES = [
 ];
 const PALETTE = [['Black','#121212'],['White','#f6f6f4'],['Cream','#efe6d2'],['Beige','#d6c3a3'],['Camel','#b88a5c'],['Brown','#6b4a32'],['Grey','#9a9a9e'],['Navy','#22304f'],['Denim','#5d7fa3'],['Olive','#6c6f48'],['Burgundy','#6e1f2e'],['Red','#c8332f'],['Pink','#e9a8b8'],['Lilac','#b9a7d6']];
 const AVOID = ['Heels','Tight fits','Short hemlines','Bright colors','Bold prints','Very formal looks'];
-const STEPS = ['style','week','colors'];
+const STEPS = ['name','style','week','colors'];
 const OCC_SUB = {work:'Office, meetings', dinner:'Restaurants, friends', weekend:'Errands, coffee, walks', date:'Something a bit special', travel:'Trips and long days out'};
 const OCC_ICON = {
   work:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>',
@@ -790,11 +791,11 @@ function meSheet(){
   const p = state.profile || {};
   if (p.guest) return openSheet(`<div class="prof"><span class="me xl">${PERSON}</span><div><h2>Guest</h2><p class="sub" style="margin:0">You’re looking around without an account.</p></div></div>
     <p class="sub" style="margin-bottom:18px">Sign up to save your style and get outfits made for you.</p>
-    <div class="row"><button class="btn" data-act="signup">Create account</button><button class="btn ghost" data-act="signin">Sign in</button></div>`);
+    <div class="row"><button class="btn" data-act="signup">Sign up or sign in</button></div>`);
   const tags = (arr, f) => arr.length ? `<div class="tags">${arr.map(f).join('')}</div>` : '<span class="cmeta" style="margin:0">Not set</span>';
   const n = displayName(p), em = displayEmail(p);
   const av = isG(p) && viewer.avatar ? `<img src="${esc(viewer.avatar)}" alt="">` : n ? esc(n[0].toUpperCase()) : PERSON;
-  openSheet(`<div class="prof"><span class="me xl">${av}</span><div style="min-width:0"><h2>${esc(n || 'Your profile')}</h2><p class="sub" style="margin:0;overflow:hidden;text-overflow:ellipsis">${esc(em)}${isG(p) ? (em?' · ':'') + 'Signed in with Google' : ''}</p></div></div>
+  openSheet(`<div class="prof"><span class="me xl">${av}</span><div style="min-width:0"><h2>${esc([n, p.last].filter(Boolean).join(' ') || 'Your profile')}</h2><p class="sub" style="margin:0;overflow:hidden;text-overflow:ellipsis">${esc(em)}${isG(p) ? (em?' · ':'') + 'Signed in with Google' : ''}</p></div></div>
     <div class="sec"><div class="label">Style</div>${tags(p.vibes, v=>`<span class="tag">${esc(vibeName(v))}</span>`)}</div>
     <div class="sec"><div class="label">Dresses for</div>${tags(p.occasions, o=>`<span class="tag">${esc(occLabel(o))}</span>`)}</div>
     <div class="sec"><div class="label">Favourite colors</div>${tags(p.colors, c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`)}</div>
@@ -811,7 +812,7 @@ const GLOGO = 'images/google.png';
 let ob = null;
 function startOnboarding(step, editing){
   const p = state.profile && !state.profile.guest ? state.profile : {};
-  ob = {step, mode: step==='signin' ? 'signin' : 'signup', dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', email:p.email||'', vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
+  ob = {step, phase:'email', known:false, dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', last:p.last||'', email:p.email||'', vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
   const el = $('#auth'); el.classList.remove('leave'); el.hidden = false; document.body.classList.add('locked');
   paintAuth();
 }
@@ -820,73 +821,45 @@ function endAuth(){
   setTimeout(()=>{ el.hidden = true; el.innerHTML = ''; el.classList.remove('leave'); }, 430);
   ob = null; paintMe(); render(); requestAnimationFrame(movePill);
 }
+function testAccounts(){ try{ return JSON.parse(localStorage.getItem('stylist.testAccounts')||'{}'); }catch(e){ return {}; } }
 function saveProfile(){
   const p = state.profile = {...ob.p, guest:false, onboarded:true, test:testAuth};
   if (p.occasions.length) state.occasion = p.occasions[0];
   persist();
-  if (!testAuth) sb?.auth.updateUser({data:{first_name:p.name, vibes:p.vibes, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true}})
+  if (testAuth){ try{ localStorage.setItem('stylist.testAccounts', JSON.stringify({...testAccounts(), [p.email]:p})); }catch(e){} return; }
+  sb?.auth.updateUser({data:{first_name:p.name, last_name:p.last, vibes:p.vibes, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true}})
     .then(({error})=>{ if (error) toast('Couldn’t save your style to your account. Try again later.'); });
 }
+const MARK = '<span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>';
+const DOTS = c => `<span class="dots" style="--c:var(${c})"><i></i><i></i><i></i></span>`;
+const authLabel = () => !ob || ob.phase === 'email' ? 'Continue' : ob.known ? 'Sign in' : 'Sign up';
 function paintAuth(){
   const el = $('#auth'), o = ob, p = o.p, anim = o.dir < 0 ? 'step-back' : 'step-in';
-  el.setAttribute('aria-label', o.step==='signup' ? 'Sign up' : o.step==='signin' ? 'Sign in' : o.step==='verify' ? 'Verify email' : 'Personalize');
-  if (o.step === 'signup'){
+  el.setAttribute('aria-label', o.step==='email' ? 'Sign in or sign up' : o.step==='name' ? 'Your name' : 'Personalize');
+  if (o.step === 'email'){
+    const sent = o.phase === 'code';
     el.innerHTML = `<div class="auth-in">
+      ${sent ? `<div class="ob-top"><button class="iconbtn" type="button" data-ob="changeemail" aria-label="Use a different email">${BACK}</button></div>` : ''}
       <div class="ob-body ${anim}">
-        <span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>
-        <h1 class="big" style="margin-top:10px">Get dressed<br>in seconds.</h1>
-        <p class="sub">Outfit ideas from clothes you already own.</p>
-        <button class="gbtn" type="button" data-ob="google" style="margin-top:14px"><img class="glogo" src="${GLOGO}" alt="" width="20" height="20"><span id="gLabel">Continue with Google</span></button>
-        <div class="or">or</div>
-        <form id="signup" class="form" novalidate>
-          <div><label class="label" for="suName">First name</label><input class="field lg" id="suName" autocomplete="given-name" autocapitalize="words" value="${esc(p.name)}" placeholder="Ellen"></div>
-          <div><label class="label" for="suEmail">Email</label><input class="field lg" id="suEmail" type="email" inputmode="email" autocomplete="email" value="${esc(p.email)}" placeholder="you@example.com"></div>
-          <p class="err" id="suErr" role="alert" hidden></p>
-          <button class="btn wide" type="submit">Sign up with email</button>
+        ${sent ? `<span class="mailic" id="mailic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7l8.5 6 8.5-6"/></svg></span>` : MARK}
+        <h1 class="big" style="margin-top:10px">${!sent ? 'Get dressed<br>in seconds.' : o.known ? 'Welcome back.' : 'Create your account.'}</h1>
+        <p class="sub">${!sent ? 'Outfit ideas from clothes you already own.' : `We sent a 6-digit code to <b style="color:var(--fg)">${esc(p.email)}</b>. It can take a minute to arrive, so check your spam folder too.`}</p>
+        ${!sent ? `<button class="gbtn" type="button" data-ob="google" style="margin-top:14px"><img class="glogo" src="${GLOGO}" alt="" width="20" height="20"><span id="gLabel">Continue with Google</span></button>
+        <div class="or">or</div>` : ''}
+        <form id="emailForm" class="form" novalidate>
+          ${!sent ? `<div><label class="label" for="email">Email</label><input class="field lg" id="email" type="email" inputmode="email" autocomplete="email" maxlength="80" value="${esc(p.email)}" placeholder="you@example.com"></div>`
+            : `<div class="otp" id="otp" role="group" aria-label="Verification code">${[0,1,2,3,4,5].map(n=>`<input inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="${n===0?'one-time-code':'off'}" aria-label="Digit ${n+1}">`).join('')}</div>`}
+          <p class="err" id="authErr" role="alert" hidden></p>
+          ${sent && testAuth && o.code ? `<div class="demo-code">Test mode: no email is sent. Your code is <b id="demoCode">${o.code.slice(0,3)} ${o.code.slice(3)}</b></div>` : ''}
+          <button class="btn wide" type="submit" id="authBtn"${sent ? ' disabled' : ''}>${authLabel()}</button>
         </form>
-        <p class="fine" style="font-size:14px">Already have an account? <button class="link" type="button" data-ob="tosignin">Sign in</button></p>
-        <p class="fine">We’ll email you a 6-digit code. No password needed.</p>
+        ${sent ? `<div class="row" style="justify-content:space-between"><button class="link" type="button" data-ob="resend" id="resend" disabled>Resend code</button><button class="link" type="button" data-ob="changeemail">Change email</button></div>`
+          : `<p class="fine">We’ll email you a 6-digit code. No password needed.</p>`}
         ${modeLine()}
-        <button class="link center" type="button" data-ob="skipall">Just look around</button>
+        ${!sent ? `<button class="link center" type="button" data-ob="skipall">Just look around</button>` : ''}
       </div></div>`;
     el.scrollTop = 0;
-        return;
-  }
-  if (o.step === 'signin'){
-    el.innerHTML = `<div class="auth-in">
-      <div class="ob-top"><button class="iconbtn" data-ob="tosignup" aria-label="Back">${BACK}</button></div>
-      <div class="ob-body ${anim}">
-        <span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>
-        <h1 class="big" style="margin-top:10px">Welcome back.</h1>
-        <p class="sub">Sign in to get to your wardrobe.</p>
-        <button class="gbtn" type="button" data-ob="google" style="margin-top:14px"><img class="glogo" src="${GLOGO}" alt="" width="20" height="20"><span id="gLabel">Continue with Google</span></button>
-        <div class="or">or</div>
-        <form id="signin" class="form" novalidate>
-          <div><label class="label" for="siEmail">Email</label><input class="field lg" id="siEmail" type="email" inputmode="email" autocomplete="email" value="${esc(p.email)}" placeholder="you@example.com"></div>
-          <p class="err" id="siErr" role="alert" hidden></p>
-          <button class="btn wide" type="submit">Continue with email</button>
-        </form>
-        <p class="fine" style="font-size:14px">New to Stylist? <button class="link" type="button" data-ob="tosignup">Create an account</button></p>
-        <p class="fine">We’ll email you a 6-digit code to sign in.</p>
-        ${modeLine()}
-      </div></div>`;
-    el.scrollTop = 0; return;
-  }
-  if (o.step === 'verify'){
-    el.innerHTML = `<div class="auth-in">
-      <div class="ob-top"><button class="iconbtn" data-ob="back" aria-label="Back">${BACK}</button></div>
-      <div class="ob-body ${anim}">
-        <span class="mailic" id="mailic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7l8.5 6 8.5-6"/></svg></span>
-        <h1 class="big" style="margin-top:10px">Check your email</h1>
-        <p class="sub">We sent a 6-digit code to <b style="color:var(--fg)">${esc(p.email)}</b>. It can take a minute to arrive, so check your spam folder too.</p>
-        <div class="otp" id="otp" role="group" aria-label="Verification code">${[0,1,2,3,4,5].map(n=>`<input inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="${n===0?'one-time-code':'off'}" aria-label="Digit ${n+1}">`).join('')}</div>
-        <p class="err" id="otpErr" role="alert" hidden></p>
-        ${testAuth && o.code ? `<div class="demo-code">Test mode: no email is sent. Your code is <b id="demoCode">${o.code.slice(0,3)} ${o.code.slice(3)}</b></div>` : ''}
-        <div class="row" style="justify-content:space-between"><button class="link" data-ob="resend" id="resend" disabled>Resend code</button><button class="link" data-ob="changeemail">Change email</button></div>
-      </div>
-      <div class="ob-foot"><button class="btn wide" data-ob="verify" id="verifyBtn" disabled>Verify</button></div></div>`;
-    el.scrollTop = 0; tickResend();
-    setTimeout(()=>otpBoxes()[0]?.focus(), 420);
+    if (sent){ tickResend(); setTimeout(()=>otpBoxes()[0]?.focus(), 420); }
     return;
   }
   if (o.step === 'done'){
@@ -901,19 +874,29 @@ function paintAuth(){
   }
   const i = STEPS.indexOf(o.step), last = i === STEPS.length-1;
   const prog = STEPS.map((s,n)=>`<i class="${n<i || (n===i && o.dir<0) ? 'on' : ''}"${n===i?' data-cur':''}></i>`).join('');
+  const eyebrow = `<p class="eyebrow">Step ${i+1} of ${STEPS.length}</p>`;
   let body = '';
-  if (o.step === 'style') body = `<p class="eyebrow">Step 1 of 3</p><h1 class="big">What’s your style?</h1><p class="sub" id="vibeHint">Pick up to 3. Outfits will lean toward them.</p>
+  if (o.step === 'name') body = `${eyebrow}<h1 class="big">What’s your name?</h1><p class="sub">So we know what to call you.</p>
+    <form id="nameForm" class="form" novalidate>
+      <div><label class="label" for="fName">First name</label><input class="field lg" id="fName" autocomplete="given-name" autocapitalize="words" maxlength="30" value="${esc(p.name)}" placeholder="Ellen"></div>
+      <div><label class="label" for="lName">Last name</label><input class="field lg" id="lName" autocomplete="family-name" autocapitalize="words" maxlength="40" value="${esc(p.last)}"></div>
+      <p class="err" id="nameErr" role="alert" hidden></p>
+    </form>`;
+  if (o.step === 'style') body = `${eyebrow}<h1 class="big">What’s your style?</h1><p class="sub" id="vibeHint">Pick up to 3. Outfits will lean toward them.</p>
     <div class="vibes">${VIBES.map(v=>`<button class="vibe" data-vibe="${v.k}" aria-pressed="${p.vibes.includes(v.k)}"><span class="ck">${ICON.check}</span><span class="pics"><img src="${PHOTOS[v.p[0]]}" alt=""><img src="${PHOTOS[v.p[1]]}" alt=""></span><b>${v.n}</b><span class="vd">${v.d}</span></button>`).join('')}</div>`;
-  if (o.step === 'week') body = `<p class="eyebrow">Step 2 of 3</p><h1 class="big">What do you dress for most?</h1><p class="sub">Pick all that apply. We’ll start there.</p>
+  if (o.step === 'week') body = `${eyebrow}<h1 class="big">What do you dress for most?</h1><p class="sub">Pick all that apply. We’ll start there.</p>
     <div class="opts">${OCCASIONS.map(([k,v])=>`<button class="opt" data-wk="${k}" aria-pressed="${p.occasions.includes(k)}"><span class="oi">${OCC_ICON[k]}</span><span><b>${v}</b><span class="od">${OCC_SUB[k]}</span></span><span class="ck">${ICON.check}</span></button>`).join('')}</div>`;
-  if (o.step === 'colors') body = `<p class="eyebrow">Step 3 of 3</p><h1 class="big">Colors you love</h1><p class="sub">Tap any that feel like you.</p>
+  if (o.step === 'colors') body = `${eyebrow}<h1 class="big">Colors you love</h1><p class="sub">Tap any that feel like you.</p>
     <div class="swatches">${PALETTE.map(([n,h])=>`<button class="sw" data-col="${n}" aria-pressed="${p.colors.includes(n)}"><i style="background:${h}"><svg viewBox="0 0 24 24" fill="none" stroke="${lum(h)>.55?'#000':'#fff'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></i>${n}</button>`).join('')}</div>
     <div style="margin-top:14px"><div class="label">Anything to avoid?</div><div class="chips">${AVOID.map(a=>`<button class="chip" data-av="${a}" aria-pressed="${p.avoid.includes(a)}">${a}</button>`).join('')}</div></div>`;
+  // The name step comes right after the code is verified, so there's nothing to go back to (unless editing).
+  const canBack = i > 0 || o.editing, canSkip = o.step !== 'name';
   el.innerHTML = `<div class="auth-in">
-    <div class="ob-top"><button class="iconbtn" data-ob="back" aria-label="Back">${BACK}</button><div class="prog" aria-hidden="true">${prog}</div><button class="link" data-ob="skip">Skip</button></div>
+    <div class="ob-top">${canBack ? `<button class="iconbtn" data-ob="back" aria-label="Back">${BACK}</button>` : '<span style="width:40px"></span>'}<div class="prog" aria-hidden="true">${prog}</div>${canSkip ? '<button class="link" data-ob="skip">Skip</button>' : '<span style="width:40px"></span>'}</div>
     <div class="ob-body ${anim}">${body}</div>
     <div class="ob-foot"><button class="btn wide" data-ob="next">${last ? (o.editing ? 'Save' : 'Finish') : 'Continue'}</button></div></div>`;
   el.scrollTop = 0;
+  if (o.step === 'name') setTimeout(()=>$(p.name ? '#lName' : '#fName')?.focus(), 420);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{ el.querySelector('[data-cur]')?.classList.add('on'); }));
 }
 let resendTimer;
@@ -925,17 +908,27 @@ function signInAs(acc){
 }
 function codeSent(){ ob.tries = 0; ob.locked = false; ob.busy = false; ob.resendAt = Date.now() + (testAuth ? 10000 : 60000); }
 const wait = ms => new Promise(r=>setTimeout(r, ms));
-async function sendCode(){
+async function sendCode(create){
   if (testAuth){ await wait(600); ob.code = String(Math.floor(100000 + Math.random()*900000)); return null; }
   if (!sb) return {message:'offline'};
-  const signup = ob.mode === 'signup';
-  const {error} = await sb.auth.signInWithOtp({email:ob.p.email, options:{shouldCreateUser:signup, data: signup ? {first_name:ob.p.name} : undefined}});
+  const {error} = await sb.auth.signInWithOtp({email:ob.p.email, options:{shouldCreateUser:create}});
+  return error;
+}
+// Supabase decides whether the email has an account: first ask for a sign-in code only (no new account);
+// if there's no account, ask again allowing one. Exactly one email is sent, and Supabase rate-limits both calls.
+async function startEmail(){
+  if (testAuth){ ob.known = !!testAccounts()[ob.p.email]; return sendCode(false); }
+  let error = await sendCode(false);
+  if (!error){ ob.known = true; return null; }
+  if (authErr(error) !== 'nouser') return error;
+  error = await sendCode(true);
+  if (!error) ob.known = false;
   return error;
 }
 function otpBoxes(){ return [...document.querySelectorAll('#otp input')]; }
 function otpValue(){ return otpBoxes().map(i=>i.value).join(''); }
 function otpSync(){
-  const v = otpValue(), b = $('#verifyBtn');
+  const v = otpValue(), b = $('#authBtn');
   otpBoxes().forEach(i=>i.classList.toggle('filled', !!i.value));
   if (b && !ob.busy) b.disabled = v.length < 6 || ob.locked;
   if (v.length === 6) checkCode();
@@ -943,7 +936,7 @@ function otpSync(){
 function tickResend(){
   clearInterval(resendTimer);
   const f = () => {
-    const b = $('#resend'); if (!b || !ob || ob.step !== 'verify'){ clearInterval(resendTimer); return; }
+    const b = $('#resend'); if (!b || !ob || ob.phase !== 'code'){ clearInterval(resendTimer); return; }
     const left = Math.ceil((ob.resendAt - Date.now())/1000);
     if (left > 0){ b.disabled = true; b.textContent = `Resend code in ${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`; }
     else { b.disabled = false; b.textContent = 'Resend code'; clearInterval(resendTimer); }
@@ -953,38 +946,42 @@ function tickResend(){
 async function testVerify(v){
   await wait(600);
   if (v !== ob.code) return {error:{code:'otp_expired'}};
-  return {data:{user:{email:ob.p.email, user_metadata:{first_name:ob.p.name}, app_metadata:{provider:'email'}}}};
+  const a = testAccounts()[ob.p.email];
+  const meta = a ? {first_name:a.name, last_name:a.last, vibes:a.vibes, occasions:a.occasions, colors:a.colors, avoid:a.avoid, onboarded:true} : {};
+  return {data:{user:{email:ob.p.email, user_metadata:meta, app_metadata:{provider:'email'}}}};
 }
 async function checkCode(){
-  if (!ob || ob.busy || ob.locked) return;
+  if (!ob || ob.phase !== 'code' || ob.busy || ob.locked) return;
   const v = otpValue(); if (v.length < 6) return;
   ob.busy = true;
-  const g = $('#otp'), err = $('#otpErr'), btn = $('#verifyBtn');
+  const g = $('#otp'), err = $('#authErr'), btn = $('#authBtn');
   g.classList.remove('bad'); g.classList.add('busy'); err.hidden = true;
-  btn.disabled = true; btn.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Checking';
+  btn.disabled = true; btn.innerHTML = DOTS('--on-ink') + (ob.known ? 'Signing in' : 'Signing up');
   const {data, error} = testAuth ? await testVerify(v) : sb ? await sb.auth.verifyOtp({email:ob.p.email, token:v, type:'email'}) : {error:{}};
-  if (!ob || ob.step !== 'verify') return;
+  if (!ob || ob.phase !== 'code') return;
   ob.busy = false; g.classList.remove('busy');
   if (!error && data?.user){
     const acc = profileFromUser(data.user); setViewer(data.user);
     g.classList.add('ok'); otpBoxes().forEach(i=>i.disabled = true); btn.innerHTML = ICON.check + 'Email verified';
+    clearInterval(resendTimer);
     setTimeout(()=>{ if (!ob) return;
       if (acc.onboarded) return signInAs(acc);
-      ob.p.name = ob.p.name || acc.name; ob.p.verified = true; ob.step = 'style'; ob.dir = 1; paintAuth(); }, 900);
+      // Whatever the button said, someone who hasn't finished onboarding continues it here.
+      ob.p = {...ob.p, provider:acc.provider, name:acc.name, last:acc.last, email:acc.email}; ob.step = 'name'; ob.dir = 1; paintAuth(); }, 900);
     return;
   }
   ob.tries++;
   let msg = authErr(error, 'Couldn’t check the code. Check your connection and try again.');
   if (ob.tries >= 5 || error?.status === 429){ ob.locked = true; ob.resendAt = 0; msg = 'Too many tries. Get a new code to continue.'; }
   err.textContent = msg; err.hidden = false; g.classList.add('bad'); nudge(g);
-  btn.textContent = 'Verify'; btn.disabled = true;
+  btn.textContent = authLabel(); btn.disabled = true;
   otpBoxes().forEach(i=>{ i.value = ''; i.classList.remove('filled'); i.disabled = !!ob.locked; });
   if (ob.locked) tickResend(); else otpBoxes()[0].focus();
 }
 $('#auth').addEventListener('input', e=>{
   const i = e.target; if (!i.matches('#otp input')) return;
   const boxes = otpBoxes(), idx = boxes.indexOf(i), digits = i.value.replace(/\D/g,'');
-  $('#otp').classList.remove('bad'); $('#otpErr').hidden = true;
+  $('#otp').classList.remove('bad'); $('#authErr').hidden = true;
   if (digits.length > 1){
     digits.slice(0, 6-idx).split('').forEach((d,k)=>{ boxes[idx+k].value = d; });
     boxes[Math.min(idx + digits.length, 5)].focus();
@@ -992,12 +989,13 @@ $('#auth').addEventListener('input', e=>{
   otpSync();
 });
 $('#auth').addEventListener('keydown', e=>{
-  const i = e.target; if (!i.matches || !i.matches('#otp input')) return;
+  const i = e.target; if (!i.matches) return;
+  if (i.matches('#nameForm input') && e.key === 'Enter'){ e.preventDefault(); return nextStep(); }
+  if (!i.matches('#otp input')) return;
   const boxes = otpBoxes(), idx = boxes.indexOf(i);
   if (e.key === 'Backspace' && !i.value && idx > 0){ e.preventDefault(); boxes[idx-1].value = ''; boxes[idx-1].focus(); otpSync(); }
   else if (e.key === 'ArrowLeft' && idx > 0) boxes[idx-1].focus();
   else if (e.key === 'ArrowRight' && idx < 5) boxes[idx+1].focus();
-  else if (e.key === 'Enter') checkCode();
 });
 $('#auth').addEventListener('paste', e=>{
   const i = e.target; if (!i.matches || !i.matches('#otp input')) return;
@@ -1011,78 +1009,72 @@ function nudge(el){ el.classList.remove('shake'); void el.offsetWidth; el.classL
 function toggleIn(key, v, btn){ const arr = ob.p[key], on = arr.includes(v); ob.p[key] = on ? arr.filter(x=>x!==v) : [...arr, v]; btn.setAttribute('aria-pressed', !on); }
 
 async function submitEmail(form, err){
-  const b = form.querySelector('button[type=submit]'), label = b.textContent;
-  b.disabled = true; b.innerHTML = '<span class="dots" style="--c:var(--on-ink)"><i></i><i></i><i></i></span>Sending code';
-  const error = await sendCode();
-  if (!ob) return;
-  if (!error){ codeSent(); ob.step = 'verify'; ob.dir = 1; return paintAuth(); }
-  b.disabled = false; b.textContent = label;
-  const msg = authErr(error, 'Couldn’t send the code. Check your connection and try again.');
-  if (msg === 'nouser') err.innerHTML = 'We couldn’t find an account with this email. <button class="link" type="button" data-ob="tosignup">Create one</button>';
-  else err.textContent = msg;
-  err.hidden = false; nudge(form);
+  const b = $('#authBtn');
+  b.disabled = true; b.innerHTML = DOTS('--on-ink') + 'Checking';
+  const error = await startEmail();
+  if (!ob || ob.phase !== 'email') return;
+  if (!error){ codeSent(); ob.phase = 'code'; ob.dir = 1; return paintAuth(); }
+  b.disabled = false; b.textContent = authLabel();
+  err.textContent = authErr(error, 'Couldn’t send the code. Check your connection and try again.'); err.hidden = false; nudge(form);
+}
+function nextStep(){
+  if (ob.step === 'name'){
+    const f = $('#fName').value.trim(), l = $('#lName').value.trim(), err = $('#nameErr');
+    if (!f || !l){ err.textContent = !f ? 'Enter your first name.' : 'Enter your last name.'; err.hidden = false; nudge($('#nameForm')); $(!f ? '#fName' : '#lName').focus(); return; }
+    ob.p.name = f.slice(0,30); ob.p.last = l.slice(0,40);
+    if (!testAuth) sb?.auth.updateUser({data:{first_name:ob.p.name, last_name:ob.p.last}});
+  }
+  const i = STEPS.indexOf(ob.step);
+  if (i < STEPS.length-1){ ob.step = STEPS[i+1]; ob.dir = 1; return paintAuth(); }
+  saveProfile();
+  if (ob.editing){ endAuth(); toast('Preferences updated', true); return; }
+  ob.step = 'done'; ob.dir = 1; paintAuth();
 }
 $('#auth').addEventListener('submit', e=>{
   e.preventDefault(); if (!ob) return;
-  if (e.target.id === 'signin'){
-    const email = $('#siEmail').value.trim(), err = $('#siErr');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ err.textContent = 'Enter an email like name@example.com.'; err.hidden = false; nudge(e.target); $('#siEmail').focus(); return; }
-    ob.p.email = email.slice(0,80); ob.mode = 'signin'; err.hidden = true;
-    return submitEmail(e.target, err);
-  }
-  if (e.target.id !== 'signup') return;
-  const name = $('#suName').value.trim(), email = $('#suEmail').value.trim(), err = $('#suErr');
-  let msg = '';
-  if (!name) msg = 'Enter your first name.';
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) msg = 'Enter an email like name@example.com.';
-  if (msg){ err.textContent = msg; err.hidden = false; nudge(e.target); (name ? $('#suEmail') : $('#suName')).focus(); return; }
-  ob.p.provider = 'email'; ob.p.name = name.slice(0,30); ob.p.email = email.slice(0,80); ob.mode = 'signup'; err.hidden = true;
+  if (e.target.id === 'nameForm') return nextStep();
+  if (e.target.id !== 'emailForm') return;
+  if (ob.phase === 'code') return checkCode();
+  const email = $('#email').value.trim().toLowerCase(), err = $('#authErr');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ err.textContent = 'Enter an email like name@example.com.'; err.hidden = false; nudge(e.target); $('#email').focus(); return; }
+  ob.p.email = email.slice(0,80); err.hidden = true;
   submitEmail(e.target, err);
 });
 $('#auth').addEventListener('click', e=>{
   const t = e.target.closest('button'); if (!t || !ob) return;
   const d = t.dataset;
   if (d.ob === 'skipall'){ state.profile = {guest:true, name:'', email:'', vibes:[], occasions:[], colors:[], avoid:[]}; persist(); return endAuth(); }
-  if (d.ob === 'tosignin'){ ob.mode = 'signin'; ob.step = 'signin'; ob.dir = 1; return paintAuth(); }
-  if (d.ob === 'tosignup'){ ob.mode = 'signup'; ob.step = 'signup'; ob.dir = -1; return paintAuth(); }
   if (d.ob === 'google'){
     if (!sb || !googleOn) return toast('Google sign-in isn’t set up yet. Use your email for now.');
-    t.disabled = true; $('#gLabel').innerHTML = '<span class="dots" style="--c:var(--fg)"><i></i><i></i><i></i></span>';
+    t.disabled = true; $('#gLabel').innerHTML = DOTS('--fg');
     sb.auth.signInWithOAuth({provider:'google', options:{redirectTo: location.origin + location.pathname}}).then(({error})=>{
       if (!error) return;
       t.disabled = false; $('#gLabel').textContent = 'Continue with Google'; toast('Couldn’t open Google sign-in. Try again.');
     });
     return;
   }
-  if (d.ob === 'realmode' || d.ob === 'testmode'){ setTestAuth(d.ob === 'testmode'); return paintAuth(); }
-  if (d.ob === 'verify') return checkCode();
+  if (d.ob === 'realmode' || d.ob === 'testmode'){ setTestAuth(d.ob === 'testmode'); ob.phase = 'email'; ob.code = null; clearInterval(resendTimer); return paintAuth(); }
   if (d.ob === 'resend'){
     t.disabled = true;
-    sendCode().then(error=>{
-      if (!ob || ob.step !== 'verify') return;
-      if (error){ t.disabled = false; $('#otpErr').textContent = authErr(error, 'Couldn’t send a new code. Try again.'); $('#otpErr').hidden = false; return; }
-      codeSent(); $('#otpErr').hidden = true; $('#otp').classList.remove('bad');
+    sendCode(!ob.known).then(error=>{
+      if (!ob || ob.phase !== 'code') return;
+      if (error){ t.disabled = false; $('#authErr').textContent = authErr(error, 'Couldn’t send a new code. Try again.'); $('#authErr').hidden = false; return; }
+      codeSent(); $('#authErr').hidden = true; $('#otp').classList.remove('bad');
       if (testAuth) $('#demoCode').textContent = ob.code.slice(0,3) + ' ' + ob.code.slice(3);
       otpBoxes().forEach(i=>{ i.disabled = false; i.value = ''; i.classList.remove('filled'); });
-      $('#verifyBtn').disabled = true;
+      $('#authBtn').disabled = true;
       const m = $('#mailic'); m.classList.remove('again'); void m.offsetWidth; m.classList.add('again');
       tickResend(); otpBoxes()[0].focus(); toast('New code sent', true);
     });
     return;
   }
-  if (d.ob === 'changeemail' || (d.ob === 'back' && ob.step === 'verify')){ clearInterval(resendTimer); ob.step = ob.mode === 'signin' ? 'signin' : 'signup'; ob.dir = -1; paintAuth(); if (d.ob === 'changeemail') setTimeout(()=>$(ob.mode === 'signin' ? '#siEmail' : '#suEmail')?.select(), 300); return; }
+  if (d.ob === 'changeemail'){ clearInterval(resendTimer); ob.phase = 'email'; ob.code = null; ob.known = false; ob.dir = -1; paintAuth(); setTimeout(()=>$('#email')?.select(), 300); return; }
   if (d.ob === 'back'){
     const i = STEPS.indexOf(ob.step);
-    if (i === 0){ if (ob.editing) return endAuth(); ob.step = 'signup'; } else ob.step = STEPS[i-1];
-    ob.dir = -1; return paintAuth();
+    if (i <= 0){ if (ob.editing) endAuth(); return; }
+    ob.step = STEPS[i-1]; ob.dir = -1; return paintAuth();
   }
-  if (d.ob === 'next' || d.ob === 'skip'){
-    const i = STEPS.indexOf(ob.step);
-    if (i < STEPS.length-1){ ob.step = STEPS[i+1]; ob.dir = 1; return paintAuth(); }
-    saveProfile();
-    if (ob.editing){ endAuth(); toast('Preferences updated', true); return; }
-    ob.step = 'done'; ob.dir = 1; return paintAuth();
-  }
+  if (d.ob === 'next' || d.ob === 'skip') return nextStep();
   if (d.ob === 'finish') return endAuth();
   if (d.vibe){
     const on = ob.p.vibes.includes(d.vibe);
@@ -1101,10 +1093,9 @@ document.addEventListener('click', async e=>{
   const a = t.dataset;
   if (a.act==='me') return meSheet();
   if (a.act==='editprefs'){ closeSheet(); return startOnboarding('style', true); }
-  if (a.act==='signup'){ closeSheet(); return startOnboarding('signup'); }
-  if (a.act==='signin'){ closeSheet(); return startOnboarding('signin'); }
+  if (a.act==='signup' || a.act==='signin'){ closeSheet(); return startOnboarding('email'); }
   if (a.act==='signout'){
-    if (t.dataset.armed){ sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('signin'), 250); return; }
+    if (t.dataset.armed){ sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('email'), 250); return; }
     t.dataset.armed='1'; t.textContent='Tap again to sign out'; return;
   }
   if (a.act==='add') return addSheet();
@@ -1178,11 +1169,11 @@ render(); requestAnimationFrame(movePill); paintAI(); paintMe();
   if (u){
     const acc = profileFromUser(u); setViewer(u);
     if (acc.onboarded){ state.profile = acc; if (acc.occasions.length) state.occasion = acc.occasions[0]; persist(); paintMe(); render(); return; }
-    startOnboarding('style'); ob.p = {...ob.p, provider:acc.provider, name:acc.name, email:acc.email}; return;
+    startOnboarding('name'); ob.p = {...ob.p, provider:acc.provider, name:acc.name, last:acc.last, email:acc.email}; paintAuth(); return;
   }
   // No real session: drop any profile left over from the old demo sign-in (test-mode profiles stay while test mode is on).
   if (state.profile && !state.profile.guest && !(state.profile.test && testAuth)){ state.profile = null; persist(); paintMe(); }
-  if (!state.profile) startOnboarding('signup');
+  if (!state.profile) startOnboarding('email');
 })();
 </script>
 
