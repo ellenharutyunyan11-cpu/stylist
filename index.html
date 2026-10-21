@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Stylist</title>
+<script>/* Apply the theme before the page draws, so it never flashes the other one. Dark unless the person picked Light or Automatic. */
+(()=>{ let t = 'dark'; try{ t = localStorage.getItem('stylist.theme') || 'dark'; }catch(e){} if (t !== 'auto') document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark'; })();</script>
 <style>
 /* Layout: one calm column, sticky glass header with a sliding segmented control; content is grids of soft tiles. */
 :root{
@@ -955,11 +957,20 @@ function paintMe(){
   const n = displayName(p);
   b.innerHTML = p.guest ? PERSON : (isG(p) && viewer.avatar) ? `<img src="${esc(viewer.avatar)}" alt="">` : n ? esc(n[0].toUpperCase()) : PERSON;
 }
+/* Appearance: Dark by default; Light, or Automatic to follow the device. Remembered on this device. */
+const THEMES = [['dark','Dark'],['light','Light'],['auto','Automatic']];
+function themePref(){ try{ const t = localStorage.getItem('stylist.theme'); return t === 'light' || t === 'auto' ? t : 'dark'; }catch(e){ return 'dark'; } }
+function setTheme(t){
+  try{ localStorage.setItem('stylist.theme', t); }catch(e){}
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+}
+const themeHTML = () => `<div class="sec"><div class="label">Appearance</div><div class="chips">${THEMES.map(([k,v])=>`<button class="chip" data-theme-pick="${k}" aria-pressed="${themePref()===k}">${v}</button>`).join('')}</div></div>`;
 function meSheet(){
   const p = state.profile || {};
   if (p.guest) return openSheet(`<div class="prof"><span class="me xl">${PERSON}</span><div><h2>Guest</h2><p class="sub" style="margin:0">You’re looking around without an account.</p></div></div>
     <p class="sub" style="margin-bottom:18px">Sign up to save your style and get outfits made for you.</p>
-    <div class="row"><button class="btn" data-act="signup">Sign up or sign in</button></div>`);
+    ${themeHTML()}
+    <div class="row" style="margin-top:6px"><button class="btn" data-act="signup">Sign up or sign in</button></div>`);
   const tags = (arr, f) => arr.length ? `<div class="tags">${arr.map(f).join('')}</div>` : '<span class="cmeta" style="margin:0">Not set</span>';
   const n = displayName(p), em = displayEmail(p);
   const av = isG(p) && viewer.avatar ? `<img src="${esc(viewer.avatar)}" alt="">` : n ? esc(n[0].toUpperCase()) : PERSON;
@@ -968,6 +979,7 @@ function meSheet(){
     <div class="sec"><div class="label">Dresses for</div>${tags(p.occasions, o=>`<span class="tag">${esc(occLabel(o))}</span>`)}</div>
     <div class="sec"><div class="label">Favourite colors</div>${tags(p.colors, c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`)}</div>
     <div class="sec"><div class="label">Avoids</div>${tags(p.avoid, a=>`<span class="tag">${esc(a)}</span>`)}</div>
+    ${themeHTML()}
     <div class="row" style="margin-top:6px"><button class="btn" data-act="editprefs">Edit preferences</button><button class="btn ghost danger" data-act="signout">Sign out</button></div>`);
 }
 
@@ -1288,6 +1300,7 @@ document.addEventListener('click', async e=>{
   if (t.closest('#auth')) return;
   const a = t.dataset;
   if (a.act==='me') return meSheet();
+  if (a.themePick){ setTheme(a.themePick); document.querySelectorAll('[data-theme-pick]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.themePick===a.themePick)); return; }
   if (a.act==='editprefs'){ closeSheet(); return startOnboarding('style', true); }
   if (a.act==='signup' || a.act==='signin'){ closeSheet(); return startOnboarding('email'); }
   if (a.act==='signout'){
