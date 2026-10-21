@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>Your Stylist code</title>
+<!-- Supabase: Authentication → Emails → "Confirm signup". Subject: Your Stylist code -->
+<style>
+  @media (prefers-color-scheme: dark){
+    .bg{background:#000000 !important}
+    .card{background:#111113 !important}
+    .fg{color:#f5f5f7 !important}
+    .muted{color:#8e8e93 !important}
+    .tile{background:#1c1c1e !important}
+    .rule{border-color:rgba(255,255,255,.1) !important}
+    .logo-l{display:none !important}
+    .logo-d{display:block !important}
+  }
+  @media (max-width:520px){
+    .pad{padding:32px 24px !important}
+    .h1{font-size:28px !important}
+    .code{font-size:32px !important;letter-spacing:8px !important;padding-left:8px !important}
+  }
+</style>
+</head>
+<body class="bg" style="margin:0;padding:0;background:#f5f5f4;-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">Your code is {{ .Token }}. Enter it in Stylist to finish signing up.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg" style="background:#f5f5f4">
+  <tr><td align="center" style="padding:40px 16px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
+
+      <tr><td style="padding:0 4px 20px">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="width:28px;height:28px">
+            <img class="logo-l" src="https://raw.githubusercontent.com/ellenharutyunyan11-cpu/stylist/main/images/email-logo.png" width="28" height="28" alt="" style="display:block;width:28px;height:28px;border:0;border-radius:9px">
+            <div style="mso-hide:all"><img class="logo-d" src="https://raw.githubusercontent.com/ellenharutyunyan11-cpu/stylist/main/images/email-logo-dark.png" width="28" height="28" alt="" style="display:none;width:28px;height:28px;border:0;border-radius:9px"></div>
+          </td>
+          <td class="fg" style="padding-left:10px;font:600 20px/1 -apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',Helvetica,Arial,sans-serif;letter-spacing:-0.03em;color:#0b0b0c">Stylist</td>
+        </tr></table>
+      </td></tr>
+
+      <tr><td class="card pad" style="background:#ffffff;border-radius:24px;padding:40px 36px">
+        <h1 class="fg h1" style="margin:0;font:700 32px/1.08 -apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',Helvetica,Arial,sans-serif;letter-spacing:-0.04em;color:#0b0b0c">Welcome to Stylist.</h1>
+        <p class="muted" style="margin:10px 0 0;font:15px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#6e6e73">Here’s your code to finish signing up. Enter it in the app and you’re in.</p>
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px">
+          <tr><td class="tile" align="center" style="background:#ecebe8;border-radius:16px;padding:22px 12px">
+            <span class="fg code" style="display:inline-block;padding-left:12px;font:600 38px/1 -apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',Helvetica,Arial,sans-serif;letter-spacing:12px;color:#0b0b0c;font-variant-numeric:tabular-nums">{{ .Token }}</span>
+          </td></tr>
+        </table>
+
+        <p class="muted" style="margin:16px 0 0;font:13px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#6e6e73;text-align:center">This code works once and expires in 1 hour.</p>
+
+        <p class="muted rule" style="margin:28px 0 0;padding-top:20px;border-top:1px solid rgba(0,0,0,.08);font:12.5px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#6e6e73">Didn’t sign up for Stylist? You can ignore this email. Someone may have typed your address by mistake.</p>
+      </td></tr>
+
+      <tr><td class="muted" align="center" style="padding:20px 8px 0;font:12.5px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#6e6e73">Stylist · Outfit ideas from clothes you already own.</td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
