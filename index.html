@@ -878,8 +878,7 @@ function paintAuth(){
   let body = '';
   if (o.step === 'name') body = `${eyebrow}<h1 class="big">What’s your name?</h1><p class="sub">So we know what to call you.</p>
     <form id="nameForm" class="form" novalidate>
-      <div><label class="label" for="fName">First name</label><input class="field lg" id="fName" autocomplete="given-name" autocapitalize="words" maxlength="30" value="${esc(p.name)}" placeholder="Ellen"></div>
-      <div><label class="label" for="lName">Last name</label><input class="field lg" id="lName" autocomplete="family-name" autocapitalize="words" maxlength="40" value="${esc(p.last)}"></div>
+      <div><label class="label" for="fullName">Full name</label><input class="field lg" id="fullName" autocomplete="name" autocapitalize="words" maxlength="70" value="${esc([p.name, p.last].filter(Boolean).join(' '))}" placeholder="Ellen Harutyunyan"></div>
       <p class="err" id="nameErr" role="alert" hidden></p>
     </form>`;
   if (o.step === 'style') body = `${eyebrow}<h1 class="big">What’s your style?</h1><p class="sub" id="vibeHint">Pick up to 3. Outfits will lean toward them.</p>
@@ -896,7 +895,7 @@ function paintAuth(){
     <div class="ob-body ${anim}">${body}</div>
     <div class="ob-foot"><button class="btn wide" data-ob="next">${last ? (o.editing ? 'Save' : 'Finish') : 'Continue'}</button></div></div>`;
   el.scrollTop = 0;
-  if (o.step === 'name') setTimeout(()=>$(p.name ? '#lName' : '#fName')?.focus(), 420);
+  if (o.step === 'name') setTimeout(()=>$('#fullName')?.focus(), 420);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{ el.querySelector('[data-cur]')?.classList.add('on'); }));
 }
 let resendTimer;
@@ -1019,9 +1018,11 @@ async function submitEmail(form, err){
 }
 function nextStep(){
   if (ob.step === 'name'){
-    const f = $('#fName').value.trim(), l = $('#lName').value.trim(), err = $('#nameErr');
-    if (!f || !l){ err.textContent = !f ? 'Enter your first name.' : 'Enter your last name.'; err.hidden = false; nudge($('#nameForm')); $(!f ? '#fName' : '#lName').focus(); return; }
-    ob.p.name = f.slice(0,30); ob.p.last = l.slice(0,40);
+    const full = $('#fullName').value.trim().replace(/\s+/g, ' '), err = $('#nameErr');
+    if (!full){ err.textContent = 'Enter your name.'; err.hidden = false; nudge($('#nameForm')); $('#fullName').focus(); return; }
+    // The first word is the first name, used for greetings; the rest is kept as the last name.
+    const [f, ...rest] = full.split(' ');
+    ob.p.name = f.slice(0,30); ob.p.last = rest.join(' ').slice(0,40);
     if (!testAuth) sb?.auth.updateUser({data:{first_name:ob.p.name, last_name:ob.p.last}});
   }
   const i = STEPS.indexOf(ob.step);
