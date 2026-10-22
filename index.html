@@ -1074,7 +1074,7 @@ function paintAuth(){
   let body = '';
   if (o.step === 'name') body = `${eyebrow}<h1 class="big">What’s your name?</h1><p class="sub">So we know what to call you.</p>
     <form id="nameForm" class="form" novalidate>
-      <div><label class="label" for="fullName">Full name</label><input class="field lg" id="fullName" autocomplete="name" autocapitalize="words" maxlength="70" value="${esc([p.name, p.last].filter(Boolean).join(' '))}" placeholder="Ellen Harutyunyan"></div>
+      <div><label class="label" for="fullName">Full name</label><input class="field lg" id="fullName" autocomplete="name" autocapitalize="words" maxlength="70" value="${esc([p.name, p.last].filter(Boolean).join(' '))}" placeholder="Audrey Hepburn"></div>
       <p class="err" id="nameErr" role="alert" hidden></p>
     </form>`;
   if (o.step === 'style') body = `${eyebrow}<h1 class="big">What’s your style?</h1><p class="sub" id="vibeHint">Pick up to 3. Outfits will lean toward them.</p>
