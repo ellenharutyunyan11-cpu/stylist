@@ -139,9 +139,12 @@ button.card:active .tile{transform:scale(.97)}
 .idea-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .heart.sm{width:34px;height:34px}
 .heart.sm svg{width:17px;height:17px}
-/* Favorites: a heart badge on the tile, and the toggle in the piece's details. */
-.tile .fav{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:var(--surface);display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.15)}
-.tile .fav svg{width:14px;height:14px;fill:var(--heart);stroke:var(--heart);stroke-width:1.8}
+/* Favorites: a quick heart on each wardrobe card, and the toggle in the piece's details. */
+.cardw{position:relative;min-width:0;display:grid}
+.qfav{position:absolute;top:8px;right:8px;z-index:2;width:32px;height:32px;border-radius:50%;background:var(--surface);display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.18);transition:transform .2s var(--spring)}
+.qfav:active{transform:scale(.86)}
+.qfav svg{width:16px;height:16px;fill:none;stroke:var(--fg);stroke-width:1.8;transition:fill .2s,stroke .2s}
+.qfav[aria-pressed="true"] svg{fill:var(--heart);stroke:var(--heart);animation:pop .45s var(--spring)}
 .favbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
 .favbtn[aria-pressed="true"] svg{fill:var(--heart);stroke:var(--heart)}
 .saved-sec{display:grid;gap:12px;margin-bottom:34px}
@@ -934,7 +937,8 @@ function ideasHTML(){
   </section>`;
 }
 function cardHTML(i){
-  return `<button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}${i.fav ? `<span class="fav" title="Favorite">${ICON.heart}</span>` : ''}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>`;
+  return `<div class="cardw"><button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>
+    <button class="qfav" data-fav="${i.id}" aria-pressed="${!!i.fav}" aria-label="${i.fav ? `Remove ${esc(i.name)} from favorites` : `Add ${esc(i.name)} to favorites`}">${ICON.heart}</button></div>`;
 }
 function viewWardrobe(){
   const cats = ['all', ...Object.keys(CATS).filter(c=>state.items.some(i=>i.category===c))];
@@ -1231,11 +1235,12 @@ function saveItem(){
   requestAnimationFrame(()=>$('#guide')?.scrollIntoView({behavior:'smooth', block:'nearest'}));
 }
 
-function toggleFav(id, btn){
+function toggleFav(id){
   const i = byId(id); if (!i) return;
   i.fav = !i.fav; persist(); paintCount(true); render();
   if (favSync) cloudDo(()=>cloudSetFav(i));
-  if (btn){ btn.setAttribute('aria-pressed', i.fav); btn.querySelector('span').textContent = i.fav ? 'Favorite' : 'Add to favorites'; }
+  const sheetBtn = document.querySelector(`#sheet [data-fav="${id}"]`);
+  if (sheetBtn){ sheetBtn.setAttribute('aria-pressed', i.fav); sheetBtn.querySelector('span').textContent = i.fav ? 'Favorite' : 'Add to favorites'; }
   toast(i.fav ? 'Added to your favorites' : 'Removed from favorites', i.fav);
 }
 function addWish(w){
@@ -1711,7 +1716,7 @@ document.addEventListener('click', async e=>{
   if (a.act==='guidehide'){ const all = starterState().n === STARTER.length; setGuide('off'); render(); return all ? undefined : toast('Guide hidden. Add pieces anytime with “Add item”.'); }
   if (a.act==='firststyle'){ state.mode='occasion'; state.results=null; state.error=''; go('style'); return runStyle(); }
   if (a.act==='nosamples') return removeSamples();
-  if (a.fav) return toggleFav(a.fav, t);
+  if (a.fav) return toggleFav(a.fav);
   if (a.savedtab){ state.savedTab = a.savedtab; return render(); }
   if (a.wishidea){
     const on = state.wish.find(w=>w.source==='idea' && w.name===a.wishidea);
