@@ -85,6 +85,8 @@ h1{font:700 clamp(28px,5vw,40px)/1.05 var(--display);letter-spacing:-.035em;marg
 .tile svg.g{width:72%;height:72%;transition:transform .5s var(--spring)}
 .tile img{width:100%;height:100%;object-fit:cover}
 .tile img.cut,.preview img.cut{object-fit:contain;padding:12%;filter:drop-shadow(0 6px 10px rgba(0,0,0,.12));transition:transform .5s var(--spring)}
+/* Your own pieces saved see-through (before white backgrounds) are shown on white, like new ones. */
+.tile img.white,.preview img.white{object-fit:contain;padding:8%;background:#fff}
 .collage .tile img.cut{padding:10%}
 button.card:hover .tile img.cut{transform:scale(1.06) rotate(-2deg)}
 button.card:hover .tile{transform:translateY(-3px);box-shadow:var(--shadow)}
@@ -554,7 +556,7 @@ function garment(kind, hex, pattern){
 }
 const PHOTOS = {"d1": "images/d1.webp", "d2": "images/d2.webp", "d3": "images/d3.webp", "d4": "images/d4.webp", "d5": "images/d5.webp", "d6": "images/d6.webp", "d7": "images/d7.webp", "d8": "images/d8.webp", "d9": "images/d9.webp", "d10": "images/d10.webp", "d11": "images/d11.webp", "d12": "images/d12.webp"};
 const isCutout = i => !!i.cut || /\.(png|webp)$/i.test(i.photo || '');
-function visual(item){ if (PHOTOS[item.id]) return `<img class="cut" src="${PHOTOS[item.id]}" alt="">`; return item.img ? `<img${isCutout(item) ? ' class="cut"' : ''} src="${item.img}" alt="">` : garment(item.kind||KIND_FOR[item.category], item.hex, item.pattern); }
+function visual(item){ if (PHOTOS[item.id]) return `<img class="cut" src="${PHOTOS[item.id]}" alt="">`; return item.img ? `<img${isCutout(item) ? ' class="white"' : ''} src="${item.img}" alt="">` : garment(item.kind||KIND_FOR[item.category], item.hex, item.pattern); }
 
 /* ---------- Helpers ---------- */
 const $ = s => document.querySelector(s);
