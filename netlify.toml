@@ -1,0 +1,10 @@
+# Netlify settings for Stylist.
+# Only the app itself (index.html and images) is published, copied into dist/, so the README,
+# SQL, email templates and server code never become public pages. The AI server function
+# lives in netlify/functions and needs ANTHROPIC_API_KEY set in Netlify's environment variables.
+[build]
+  command = "rm -rf dist && mkdir dist && cp -R index.html images dist/"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"

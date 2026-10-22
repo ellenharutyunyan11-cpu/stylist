@@ -543,7 +543,7 @@ async function cloudRemove(table, ids, photos){
 }
 async function cloudLoad(u){
   if (!sb || !u?.id || testAuth) return;
-  cloud = u;
+  cloud = u; useServerAI();
   const [it, of] = await Promise.all([
     sb.from('wardrobe_items').select('*').order('created_at', {ascending:false}),
     sb.from('saved_outfits').select('*').order('created_at', {ascending:true})]);
@@ -574,6 +574,30 @@ async function cloudLoad(u){
 }
 
 /* ---------- AI ---------- */
+// Inside Claude the app uses Claude's built-in AI. Anywhere else, signed-in users get the same requests
+// answered by Stylist's own server function (netlify/functions/ai.mjs); guests keep simple matching.
+const AI_URL = '/.netlify/functions/ai';
+const serverAI = {
+  async json(prompt, opts = {}){
+    const session = (await sb.auth.getSession()).data?.session;
+    if (!session) throw {code:'not_granted'};
+    const images = await Promise.all((opts.images || []).map(async f=>({media_type:'image/jpeg', data:(await shrink(f, 1024)).split(',')[1]})));
+    const res = await fetch(AI_URL, {method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}`},
+      body:JSON.stringify({prompt, images, quick:opts.modelTier === 'quick'})}).catch(()=>null);
+    const out = res && await res.json().catch(()=>null);
+    if (res?.ok && out && 'result' in out) return out.result;
+    throw {code:({not_signed_in:'not_granted', rate_limited:'rate_limited', refused:'refused', image_rejected:'image_rejected'})[out?.error] || 'ai_error'};
+  }
+};
+async function useServerAI(){
+  if (sample && sample !== serverAI) return;
+  let ok = false;
+  if (sb && !testAuth && (await sb.auth.getSession().catch(()=>null))?.data?.session){
+    const r = await fetch(AI_URL).catch(()=>null);
+    ok = !!(r?.ok && (await r.json().catch(()=>null))?.ok);
+  }
+  sample = ok ? serverAI : null; canImages = ok; aiReady = true; paintAI();
+}
 let sample = null, canImages = false, aiReady = false;
 (async () => {
   try{
@@ -583,6 +607,7 @@ let sample = null, canImages = false, aiReady = false;
     }
   }catch(e){ sample = null; }
   aiReady = true; paintAI();
+  if (!sample) useServerAI();
 })();
 function aiOn(){ return !!sample; }
 function paintAI(){
@@ -1583,6 +1608,7 @@ document.addEventListener('click', async e=>{
       const p = state.profile;
       if (p?.test) saveTestAccount(p.email, {items:state.items, saved:state.saved});
       if (cloud || (p && !p.guest)){ cloud = null; state.items = DEMO.map(x=>({...x})); state.saved = []; state.results = null; render(); paintCount(); }
+      if (sample === serverAI){ sample = null; canImages = false; paintAI(); }
       sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('email'), 250); return;
     }
     t.dataset.armed='1'; t.textContent='Tap again to sign out'; return;

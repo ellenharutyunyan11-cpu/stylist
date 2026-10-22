@@ -1,33 +1,30 @@
 # Stylist
 
-A demo web app: add your clothes, get AI outfit ideas for an occasion or around a piece you found online, and save the ones you like.
+A web app: add your clothes (the background is removed and the color detected automatically), get outfit ideas for an occasion or around a piece you found online, see which pieces would be worth adding (with links to your favorite shops), and save the outfits you like.
 
 ## What's in this folder
 
 - `index.html` – the whole app: the look (CSS), the screens and the behavior (JavaScript)
-- `images/` – the 12 sample clothing photos and the Google logo
-- `README.md` – this file
+- `images/` – the 12 sample clothing photos, the Google logo and the email logos
+- `netlify/functions/ai.mjs` – the AI server function (Claude), for signed-in users
+- `netlify.toml`, `package.json` – Netlify settings and the Anthropic SDK dependency
+- `supabase/wardrobe.sql` – database tables, security rules and photo storage (run once in Supabase)
+- `emails/` – the sign-up and sign-in code emails (paste into Supabase → Authentication → Emails)
+- `.claude/` – local preview server for Claude Code
 
-## Open it on your computer
+## Services
 
-Double-click `index.html`, or ask Claude Code: "run a local preview of this folder".
+- **Supabase** – accounts (email code sign-in), wardrobes, saved outfits and photos. Each person can only see their own data.
+- **Resend** – sends the code emails (connected in Supabase → Authentication → Emails → SMTP Settings).
+- **Netlify** – hosts the app and runs the AI function.
+- **Anthropic** – Claude, for styling and photo labelling. The API key lives only in Netlify's environment variables.
 
-## What only works inside Claude (for now)
+## Run it on your computer
 
-These two parts use Claude's built-in page features, so they switch off when the page runs anywhere else:
+Ask Claude Code to "open the demo". On your computer AI runs in "Demo mode" (simple matching); the live site has real AI for signed-in users.
 
-1. **AI styling and photo labelling.** Outside Claude, the app falls back to "Demo mode" (simple color matching).
-2. **Your name and photo after "Continue with Google".**
+## Deploying (Netlify)
 
-Everything else works anywhere: wardrobe, onboarding, sign-up screens, saved outfits.
-
-## Next steps (do them in this order, one at a time in Claude Code)
-
-1. **Save your work with git.** Ask: "set up git for this folder and make a first save".
-2. **Split the file.** Ask: "split index.html into index.html, styles.css and app.js without changing how it looks or works".
-3. **Real AI.** Ask: "add a Netlify Function that calls the Claude API for outfit suggestions and photo labelling, and make the page use it when window.claude isn't available. Keep the API key in a Netlify environment variable, never in the page."
-4. **Real sign-in.** Ask: "replace the simulated sign-in with Supabase Auth (email code + Google). Keep my current screens and design."
-5. **Real data.** Ask: "store each user's wardrobe and saved outfits in Supabase instead of the browser".
-6. **Put it online.** Connect the folder to GitHub, then connect GitHub to Netlify.
-
-After each step: open the app, click through it, and save with git before the next step.
+1. In Netlify, add a new site from GitHub and pick this repository. The settings come from `netlify.toml`.
+2. In Site configuration → Environment variables, add `ANTHROPIC_API_KEY`.
+3. In Supabase → Authentication → URL Configuration, set the Site URL to the live address and add it to Redirect URLs.

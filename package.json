@@ -1,0 +1,9 @@
+{
+  "name": "stylist",
+  "private": true,
+  "type": "module",
+  "description": "Stylist: outfit ideas from clothes you already own. Static page plus one Netlify function for AI.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.132.0"
+  }
+}
