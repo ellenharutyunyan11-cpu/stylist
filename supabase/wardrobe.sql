@@ -1,5 +1,6 @@
 -- Stylist: wardrobes and saved outfits in Supabase.
--- Run once in Supabase → SQL Editor → New query → paste → Run. Safe to run again.
+-- Run in Supabase → SQL Editor → New query → paste all of it → Run. Safe to run again; the last query
+-- should list 5 rows (3 tables, the favorite column and the bucket), all true.
 --
 -- Security: row-level security (RLS) is on for both tables and for the photo bucket.
 -- A signed-in person can only read, add, change or delete their own rows and photos.
@@ -81,3 +82,50 @@ create policy "Wardrobe photos: own change" on storage.objects for update to aut
   with check (bucket_id = 'wardrobe' and (storage.foldername(name))[1] = (select auth.uid())::text);
 create policy "Wardrobe photos: own remove" on storage.objects for delete to authenticated
   using (bucket_id = 'wardrobe' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- ---------- Favorites and wishlist (added later; safe to run again) ----------
+-- A favorite is a mark on one of your own wardrobe pieces.
+alter table public.wardrobe_items add column if not exists favorite boolean not null default false;
+
+-- The wishlist holds pieces you'd like to buy: suggestions from "Worth adding" and pieces found in shops.
+create table if not exists public.wishlist_items (
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  id          text not null check (char_length(id) between 1 and 40),
+  name        text not null check (char_length(name) between 1 and 60),
+  category    text not null check (category in ('top','bottom','dress','outerwear','shoes','accessory')),
+  kind        text check (char_length(kind) <= 20),
+  color       text check (char_length(color) <= 60),
+  hex         text check (hex ~ '^#[0-9a-fA-F]{6}$'),
+  pattern     text check (char_length(pattern) <= 20),
+  source      text not null check (source in ('idea','find')),
+  photo_path  text check (char_length(photo_path) <= 200),
+  created_at  timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+revoke all on public.wishlist_items from anon;
+grant select, insert, update, delete on public.wishlist_items to authenticated;
+alter table public.wishlist_items enable row level security;
+
+drop policy if exists "Own wishlist: read"   on public.wishlist_items;
+drop policy if exists "Own wishlist: add"    on public.wishlist_items;
+drop policy if exists "Own wishlist: change" on public.wishlist_items;
+drop policy if exists "Own wishlist: remove" on public.wishlist_items;
+create policy "Own wishlist: read"   on public.wishlist_items for select to authenticated using ((select auth.uid()) = user_id);
+create policy "Own wishlist: add"    on public.wishlist_items for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "Own wishlist: change" on public.wishlist_items for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Own wishlist: remove" on public.wishlist_items for delete to authenticated using ((select auth.uid()) = user_id);
+-- Wishlist photos go in the same private bucket and folder rules as wardrobe photos (wish-<id>.jpg).
+
+-- ---------- Refresh the API and check the result ----------
+notify pgrst, 'reload schema';
+
+select 'table' as kind, table_name as name,
+       (select relrowsecurity from pg_class where oid = ('public.' || table_name)::regclass) as protected
+from information_schema.tables
+where table_schema = 'public' and table_name in ('wardrobe_items', 'saved_outfits', 'wishlist_items')
+union all
+select 'column', 'wardrobe_items.favorite', true
+from information_schema.columns where table_schema = 'public' and table_name = 'wardrobe_items' and column_name = 'favorite'
+union all
+select 'bucket', id, not public from storage.buckets where id = 'wardrobe';

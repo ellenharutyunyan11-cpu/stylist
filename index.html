@@ -136,6 +136,16 @@ button.card:active .tile{transform:scale(.97)}
 .idea-shops{display:flex;flex-wrap:wrap;gap:6px}
 .idea-shops .chip{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
 .idea .link{justify-self:start}
+.idea-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.heart.sm{width:34px;height:34px}
+.heart.sm svg{width:17px;height:17px}
+/* Favorites: a heart badge on the tile, and the toggle in the piece's details. */
+.tile .fav{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:var(--surface);display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.tile .fav svg{width:14px;height:14px;fill:var(--heart);stroke:var(--heart);stroke-width:1.8}
+.favbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
+.favbtn[aria-pressed="true"] svg{fill:var(--heart);stroke:var(--heart)}
+.saved-sec{display:grid;gap:12px;margin-bottom:34px}
+.saved-sec h2{margin:0;font:700 22px/1.2 var(--display);letter-spacing:-.03em}
 .starter > div{display:flex;align-items:center;gap:12px;padding:10px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow);animation:rise .5s var(--spring) both}
 .starter b{display:block;font-size:15px}
 .starter .d{color:var(--muted);font-size:13px}
@@ -464,10 +474,10 @@ const OCCASIONS = [['work','Work'],['dinner','Dinner'],['weekend','Weekend'],['d
 const STYLES = ['casual','smart','formal','sporty','evening'];
 const KEY = 'stylist.v1';
 
-let state = {items:DEMO.map(x=>({...x})), saved:[], view:'wardrobe', filter:'all', mode:'occasion', occasion:'work', note:'', results:null, loading:false, find:null, findCat:'top', error:''};
+let state = {items:DEMO.map(x=>({...x})), saved:[], wish:[], savedTab:'outfits', view:'wardrobe', filter:'all', mode:'occasion', occasion:'work', note:'', results:null, loading:false, find:null, findCat:'top', error:''};
 state.profile = null;
-try{ const s = JSON.parse(localStorage.getItem(KEY)||'null'); if(s){ state.items = s.items||state.items; state.saved = s.saved||[]; state.profile = s.profile||null; } }catch(e){}
-function persist(){ try{ localStorage.setItem(KEY, JSON.stringify({items:state.items,saved:state.saved,profile:state.profile})); }catch(e){ toast('Storage is full. Remove a few photos.'); } }
+try{ const s = JSON.parse(localStorage.getItem(KEY)||'null'); if(s){ state.items = s.items||state.items; state.saved = s.saved||[]; state.wish = s.wish||[]; state.profile = s.profile||null; } }catch(e){}
+function persist(){ try{ localStorage.setItem(KEY, JSON.stringify({items:state.items,saved:state.saved,wish:state.wish,profile:state.profile})); }catch(e){ toast('Storage is full. Remove a few photos.'); } }
 
 /* ---------- Accounts (Supabase) ---------- */
 // The publishable key is meant to be public; never put the secret key in this page.
@@ -507,9 +517,11 @@ function authErr(e, fallback){
 // (row-level security keeps each person to their own rows; photos sit in a private bucket).
 // Guests and test mode keep everything in this browser as before.
 let cloud = null;
+// Favorites and the wishlist came later; they sync once their part of supabase/wardrobe.sql has run.
+let favSync = false, wishSync = false;
 const BUCKET = 'wardrobe';
 const itemRow = (i, path, at) => ({id:i.id, name:String(i.name).slice(0,60), category:i.category, kind:i.kind||null, color:String(i.color||'').slice(0,60),
-  hex:/^#[0-9a-f]{6}$/i.test(i.hex||'') ? i.hex : null, pattern:i.pattern||null, style:i.style||null, occasions:(i.occasions||[]).slice(0,10), photo_path:path||null, ...(at ? {created_at:at} : {})});
+  hex:/^#[0-9a-f]{6}$/i.test(i.hex||'') ? i.hex : null, pattern:i.pattern||null, style:i.style||null, occasions:(i.occasions||[]).slice(0,10), photo_path:path||null, ...(i.fav && favSync ? {favorite:true} : {}), ...(at ? {created_at:at} : {})});
 const outfitRow = (o, path, at) => ({id:o.id, title:String(o.title||'Outfit').slice(0,60), why:String(o.why||'').slice(0,1000), occasion:o.occasion||null,
   item_ids:(o.itemIds||[]).slice(0,12), find_name:o.find ? String(o.find.name||'').slice(0,80) : null, find_path:path||null, ...(at ? {created_at:at} : {})});
 async function upPhoto(kind, id, dataUrl){
@@ -536,6 +548,17 @@ async function cloudAddOutfits(list){
   if (!rows.length) return;
   const {error} = await sb.from('saved_outfits').insert(rows); if (error) throw error;
 }
+async function cloudAddWishes(list){
+  const now = Date.now();   // newest first in the app
+  const rows = await Promise.all(list.map(async (w, k)=>{ const p = await upPhoto('wish', w.id, w.img); if (p) w.photo = p;
+    return {id:w.id, name:String(w.name).slice(0,60), category:w.category, kind:w.kind||null, color:w.color ? String(w.color).slice(0,60) : null,
+      hex:/^#[0-9a-f]{6}$/i.test(w.hex||'') ? w.hex : null, pattern:w.pattern||null, source:w.source, photo_path:p||null, created_at:new Date(now - k).toISOString()}; }));
+  if (!rows.length) return;
+  const {error} = await sb.from('wishlist_items').insert(rows); if (error) throw error;
+}
+async function cloudSetFav(item){
+  const {error} = await sb.from('wardrobe_items').update({favorite:!!item.fav}).eq('user_id', cloud.id).eq('id', item.id); if (error) throw error;
+}
 async function cloudRemove(table, ids, photos){
   if (!ids.length) return;
   const {error} = await sb.from(table).delete().eq('user_id', cloud.id).in('id', ids); if (error) throw error;
@@ -544,9 +567,15 @@ async function cloudRemove(table, ids, photos){
 async function cloudLoad(u){
   if (!sb || !u?.id || testAuth) return;
   cloud = u; useServerAI();
-  const [it, of] = await Promise.all([
+  const [it, of, wl, fv] = await Promise.all([
     sb.from('wardrobe_items').select('*').order('created_at', {ascending:false}),
-    sb.from('saved_outfits').select('*').order('created_at', {ascending:true})]);
+    sb.from('saved_outfits').select('*').order('created_at', {ascending:true}),
+    sb.from('wishlist_items').select('*').order('created_at', {ascending:false}),
+    sb.from('wardrobe_items').select('favorite').limit(1)]);
+  // The wishlist table came later; until its SQL has run, the wishlist just stays on this device.
+  if (wl.error) console.warn('Wishlist table not reachable yet; keeping the wishlist on this device.', wl.error);
+  const wishRows = wl.error ? null : wl.data;
+  wishSync = !wl.error; favSync = !fv.error;
   if (cloud !== u) return;
   if (it.error || of.error){ cloud = null; console.warn('Wardrobe tables not reachable yet; keeping it on this device.', it.error || of.error); return; }
   if (!it.data.length && !of.data.length && !u.user_metadata?.wardrobe_ready){
@@ -554,20 +583,28 @@ async function cloudLoad(u){
     const own = ownItems(), keep = state.saved.filter(s=>s.itemIds.every(id=>own.some(i=>i.id===id)));
     state.items = own; state.saved = keep; persist(); render(); paintCount();
     try{
-      await cloudAddItems(own); await cloudAddOutfits(keep);
+      await cloudAddItems(own); await cloudAddOutfits(keep); if (wishRows) await cloudAddWishes(state.wish);
       await sb.auth.updateUser({data:{wardrobe_ready:true}});
       persist();
     }catch(e){ toast('Couldn’t copy your wardrobe to your account. Try again later.'); }
     return;
   }
-  const paths = [...it.data.map(r=>r.photo_path), ...of.data.map(r=>r.find_path)].filter(Boolean), urls = {};
+  const paths = [...it.data.map(r=>r.photo_path), ...of.data.map(r=>r.find_path), ...(wishRows||[]).map(r=>r.photo_path)].filter(Boolean), urls = {};
   if (paths.length){
     const {data} = await sb.storage.from(BUCKET).createSignedUrls(paths, 60*60*12);
     (data || []).forEach(x=>{ if (x.signedUrl) urls[x.path] = x.signedUrl; });
   }
   if (cloud !== u) return;
+  // Favorites and wishlist pieces saved on this device before their tables existed move into the account now.
+  const localFav = new Set(state.items.filter(i=>i.fav).map(i=>i.id)), localWish = state.wish.filter(w=>!w.photo);
   state.items = it.data.map(r=>({id:r.id, name:r.name, category:r.category, kind:r.kind||undefined, color:r.color||'', hex:r.hex||'#cccccc', pattern:r.pattern||undefined,
-    style:r.style||undefined, occasions:r.occasions||[], img:urls[r.photo_path]||undefined, photo:r.photo_path||undefined}));
+    style:r.style||undefined, occasions:r.occasions||[], img:urls[r.photo_path]||undefined, photo:r.photo_path||undefined, fav:!!r.favorite}));
+  if (wishRows) state.wish = wishRows.map(r=>({id:r.id, name:r.name, category:r.category, kind:r.kind||undefined, color:r.color||'', hex:r.hex||undefined,
+    pattern:r.pattern||undefined, source:r.source, img:urls[r.photo_path]||undefined, photo:r.photo_path||undefined}));
+  const carryWish = wishRows ? localWish.filter(w=>!state.wish.some(x=>x.id===w.id)) : [];
+  if (carryWish.length){ state.wish = [...carryWish, ...state.wish]; cloudDo(()=>cloudAddWishes(carryWish).then(persist)); }
+  const carryFav = favSync ? state.items.filter(i=>!i.fav && localFav.has(i.id)) : [];
+  carryFav.forEach(i=>{ i.fav = true; cloudDo(()=>cloudSetFav(i)); });
   state.saved = of.data.map(r=>({id:r.id, title:r.title, why:r.why||'', occasion:r.occasion||undefined, itemIds:r.item_ids||[],
     find:(r.find_path || r.find_name) ? {name:r.find_name||'', img:urls[r.find_path]||'', photo:r.find_path||undefined} : undefined}));
   persist(); render(); paintCount();
@@ -852,7 +889,8 @@ function go(view){
 $('#tabs').addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) go(b.dataset.view); });
 addEventListener('resize', movePill);
 function paintCount(bump){
-  const c = $('#savedCount'); c.textContent = state.saved.length; c.hidden = !state.saved.length;
+  const n = state.saved.length + state.wish.length + state.items.filter(i=>i.fav).length;
+  const c = $('#savedCount'); c.textContent = n; c.hidden = !n;
   if (bump){ c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
 }
 
@@ -889,10 +927,14 @@ function ideasHTML(){
       <div class="idea-top"><div class="tile">${garment(b.kind, b.hex, b.pattern)}</div>
         <div class="idea-txt"><b>${esc(b.name)}</b><span class="cmeta" style="margin:0">${b.gain > 0 ? `About ${b.gain} new outfit${b.gain > 1 ? 's' : ''}` : 'Fills a gap in your wardrobe'}${b.goes.length ? ` · goes with your ${b.goes.map(esc).join(', ')}` : ''}</span></div></div>
       <div class="idea-shops">${shops.length ? shops.map(s=>`<a class="chip" href="${shopLink(s, b.name.toLowerCase())}" target="_blank" rel="noopener">${esc(s)} ↗</a>`).join('') : `<a class="chip" href="${anyShopLink(b.name.toLowerCase())}" target="_blank" rel="noopener">Search online ↗</a>`}</div>
-      <button class="link" data-act="foundone" data-cat="${b.category}">Found one? Style it with your clothes</button>
+      <div class="idea-foot"><button class="link" data-act="foundone" data-cat="${b.category}">Found one? Style it with your clothes</button>
+        ${(()=>{ const on = state.wish.some(w=>w.source==='idea' && w.name===b.name); return `<button class="heart sm" data-wishidea="${esc(b.name)}" aria-pressed="${on}" aria-label="${on ? 'Remove from wishlist' : 'Save to wishlist'}">${ICON.heart}</button>`; })()}</div>
     </div>`).join('')}</div>
     ${!shops.length && signed ? `<p class="cmeta">Search your favorite shops directly. <button class="link" data-act="editshops">Add your shops</button></p>` : ''}
   </section>`;
+}
+function cardHTML(i){
+  return `<button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}${i.fav ? `<span class="fav" title="Favorite">${ICON.heart}</span>` : ''}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>`;
 }
 function viewWardrobe(){
   const cats = ['all', ...Object.keys(CATS).filter(c=>state.items.some(i=>i.category===c))];
@@ -907,7 +949,7 @@ function viewWardrobe(){
     <div class="chips" style="margin-top:18px">${cats.map(c=>`<button class="chip" data-filter="${c}" aria-pressed="${state.filter===c}">${c==='all'?'All':CATS[c]}</button>`).join('')}</div>
     <div class="grid">
       <button class="card add" data-act="add" aria-label="Add item"><div class="tile"><span class="plus">${ICON.plus}</span></div><span class="cname">Add item</span><span class="cmeta">Photo or screenshot</span></button>
-      ${list.map(i=>`<button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>`).join('')}
+      ${list.map(cardHTML).join('')}
     </div>
     ${list.length===0 && !(guide && state.filter==='all')?`<div class="empty"><b>Nothing here yet</b><span>${state.filter==='all' ? 'Add a photo of something you own.' : 'Add a piece to this category.'}</span></div>`:''}
     ${state.items.length >= 3 && !(guide && starterState().n < 3) ? ideasHTML() : ''}
@@ -937,7 +979,8 @@ function viewStyle(){
             <span class="ic">${f?`<img src="${f.img}" alt="">`:ICON.photo}</span>
             <span><b>${f?esc(f.name||'Your find'):'Upload a screenshot or photo'}</b><span>${f?'Tap to change':'From any shop, Instagram or Pinterest'}</span></span>
           </label>
-          <input class="sr" type="file" id="findFile" accept="image/*"></div>
+          <input class="sr" type="file" id="findFile" accept="image/*">
+          ${f ? `<button class="link" data-act="wishfind" style="margin-top:8px"${f.wishId ? ' disabled' : ''}>${f.wishId ? '♥ Saved to your wishlist' : '♡ Save to wishlist'}</button>` : ''}</div>
         ${f && !aiOn() ? `<div><div class="label">What is it?</div><div class="chips">${Object.keys(CAT_ONE).map(c=>`<button class="chip" data-findcat="${c}" aria-pressed="${state.findCat===c}">${CAT_ONE[c]}</button>`).join('')}</div></div>`:''}
         <div><div class="label">Where would you wear it?</div>
           <div class="chips">${OCCASIONS.map(([k,v])=>`<button class="chip" data-occ="${k}" aria-pressed="${state.occasion===k}">${v}</button>`).join('')}</div></div>
@@ -973,11 +1016,34 @@ function lookHTML(o, n, savedView){
   </article>`;
 }
 
+const BIG_HEART = ICON.heart.replace('<svg','<svg style="stroke:var(--fg);fill:none;stroke-width:1.6"');
+function wishHTML(w){
+  const shops = (state.profile?.shops || []).slice(0, 3), q = w.name.toLowerCase();
+  return `<div class="idea">
+    <div class="idea-top"><div class="tile">${w.img ? `<img src="${w.img}" alt="">` : garment(w.kind || KIND_FOR[w.category], w.hex || '#cfcac1', w.pattern)}</div>
+      <div class="idea-txt"><b>${esc(w.name)}</b><span class="cmeta" style="margin:0">${w.source === 'idea' ? 'Suggested for your wardrobe' : 'Found in a shop'} · ${esc(CAT_ONE[w.category] || '')}</span></div></div>
+    ${w.source === 'idea' ? `<div class="idea-shops">${shops.length ? shops.map(s=>`<a class="chip" href="${shopLink(s, q)}" target="_blank" rel="noopener">${esc(s)} ↗</a>`).join('') : `<a class="chip" href="${anyShopLink(q)}" target="_blank" rel="noopener">Search online ↗</a>`}</div>` : ''}
+    <div class="idea-foot">
+      <div class="g-row">${w.source === 'find' ? `<button class="btn sm" data-wishstyle="${w.id}">${ICON.spark}Style it</button>` : `<button class="btn sm ghost" data-act="foundone" data-cat="${w.category}">Found one? Style it</button>`}
+        <button class="btn sm ghost" data-wishbought="${w.id}">I bought it</button></div>
+      <button class="heart sm" data-wishremove="${w.id}" aria-pressed="true" aria-label="Remove from wishlist">${ICON.heart}</button></div>
+  </div>`;
+}
 function viewSaved(){
-  if (!state.saved.length) return `<section><div class="head"><div><h1>Saved</h1></div></div>
-    <div class="empty"><div class="big">${ICON.heart.replace('<svg','<svg style="stroke:var(--fg);fill:none;stroke-width:1.6"')}</div><b>No saved outfits yet</b><span>Tap the heart on an outfit you like.</span><button class="btn sm" data-goto="style" style="margin-top:6px">Style me</button></div></section>`;
-  return `<section><div class="head"><div><h1>Saved</h1><p class="sub">${state.saved.length} outfit${state.saved.length>1?'s':''} you liked.</p></div></div>
-    <div class="results">${state.saved.slice().reverse().map((o,n)=>lookHTML(o,n,true)).join('')}</div></section>`;
+  const tab = state.savedTab, favs = state.items.filter(i=>i.fav), pieces = state.wish.length + favs.length;
+  const tabs = `<div class="chips" role="tablist" style="margin-bottom:18px"><button class="chip" data-savedtab="outfits" aria-pressed="${tab==='outfits'}">Outfits · ${state.saved.length}</button><button class="chip" data-savedtab="pieces" aria-pressed="${tab==='pieces'}">Pieces · ${pieces}</button></div>`;
+  let body;
+  if (tab === 'outfits') body = state.saved.length
+    ? `<div class="results">${state.saved.slice().reverse().map((o,n)=>lookHTML(o,n,true)).join('')}</div>`
+    : `<div class="empty"><div class="big">${BIG_HEART}</div><b>No saved outfits yet</b><span>Tap the heart on an outfit you like.</span><button class="btn sm" data-goto="style" style="margin-top:6px">Style me</button></div>`;
+  else body = `<div class="saved-sec"><h2>Wishlist</h2>${state.wish.length
+      ? `<div class="ideas-grid">${state.wish.map(wishHTML).join('')}</div>`
+      : `<p class="sub">Pieces you’d like to buy. Tap ♡ on a “Worth adding” suggestion, or save a piece you found online in Style me → With a new find.</p>`}</div>
+    <div class="saved-sec"><h2>Favorites from your wardrobe</h2>${favs.length
+      ? `<div class="grid">${favs.map(cardHTML).join('')}</div>`
+      : `<p class="sub">Open a piece in your wardrobe and tap “Add to favorites”.</p>`}</div>`;
+  const sub = tab === 'outfits' ? 'Outfits you liked.' : 'Pieces you want, and the ones you love.';
+  return `<section><div class="head"><div><h1>Saved</h1><p class="sub">${sub}</p></div></div>${tabs}${body}</section>`;
 }
 
 /* ---------- Styling ---------- */
@@ -1086,9 +1152,10 @@ function closeSheet(){
 $('#scrim').addEventListener('click', closeSheet);
 addEventListener('keydown', e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
 
-function addSheet(k){
+function addSheet(k, from){
   const s = STARTER[k];
-  draft = {step:'pick', preset:s ? s.cat : null};
+  draft = {step:'pick', preset:s ? s.cat : from?.category || null, fromWish:from?.id, nameHint:from?.name};
+  if (from) return openSheet(`<h2>Add ${esc(from.name.toLowerCase())} to your wardrobe</h2><p class="sub">${from.img ? 'Using the photo you saved. Check the details, then add it.' : 'Add a photo of the one you bought.'}</p><div id="addBody">${addBody()}</div>`);
   openSheet(s ? `<p class="eyebrow">Starter wardrobe · step ${k+1} of ${STARTER.length}</p><h2>Add ${lower1(s.t)}</h2><p class="sub">${s.d}</p><div class="tips">${PHOTO_TIPS}</div><div id="addBody">${addBody()}</div>`
     : `<h2>Add a piece</h2><p class="sub">A photo on a plain background works best.</p><div id="addBody">${addBody()}</div>`);
 }
@@ -1116,8 +1183,8 @@ function addBody(){
 function paintAdd(){ const b=$('#addBody'); if(b) b.innerHTML = addBody(); }
 async function takeAddFile(file){
   if (!file || !file.type.startsWith('image/')) return toast('Pick an image file');
-  const preset = draft?.preset;
-  draft = {step:'reading', img: await shrink(file), name:'', category:preset||'top', preset, color:'', hex:'#cccccc', style:'casual', occasions:[], ai:false};
+  const {preset, fromWish, nameHint} = draft || {};
+  draft = {step:'reading', img: await shrink(file), name:nameHint||'', category:preset||'top', preset, fromWish, color:'', hex:'#cccccc', style:'casual', occasions:[], ai:false};
   paintAdd();
   const d0 = draft, cut = await cutout(d0.img).catch(()=>null);
   if (draft !== d0) return;
@@ -1134,7 +1201,7 @@ async function takeAddFile(file){
 {"name":"short friendly name, e.g. White linen shirt","category":"top|bottom|dress|outerwear|shoes|accessory","color":"main color in 1-3 plain words","hex":"#rrggbb approximate main color","style":"casual|smart|formal|sporty|evening","occasions":["any of: work, dinner, weekend, date, travel"],"isClothing":true}`, {modelTier:'quick', images:[file]});
       if (!draft) return;
       Object.assign(draft, {
-        name:String(r.name||'').slice(0,40), category: CAT_ONE[r.category]?r.category:draft.category, color:r.color ? String(r.color) : draft.color,
+        name:String(r.name||draft.name||'').slice(0,40), category: CAT_ONE[r.category]?r.category:draft.category, color:r.color ? String(r.color) : draft.color,
         hex:/^#[0-9a-f]{6}$/i.test(r.hex||'')?r.hex:draft.hex, style: STYLES.includes(r.style)?r.style:'casual',
         occasions:(Array.isArray(r.occasions)?r.occasions:[]).filter(o=>OCCASIONS.some(x=>x[0]===o)), ai:true,
         msg: r.isClothing===false ? 'This doesn’t look like clothing. You can still add it.' : ''
@@ -1153,6 +1220,7 @@ function saveItem(){
   cloudDo(()=>cloudAddItems([item]).then(persist));
   state.filter='all'; if(state.view!=='wardrobe') go('wardrobe'); else render();
   setTimeout(()=>{ delete item._new; }, 800);
+  if (d.fromWish){ removeWish(d.fromWish); return toast('Moved from your wishlist to your wardrobe', true); }
   if (!before) return toast('Added to your wardrobe', true);
   // Starter guide: cheer the step and point at the next one.
   const after = starterState();
@@ -1163,6 +1231,31 @@ function saveItem(){
   requestAnimationFrame(()=>$('#guide')?.scrollIntoView({behavior:'smooth', block:'nearest'}));
 }
 
+function toggleFav(id, btn){
+  const i = byId(id); if (!i) return;
+  i.fav = !i.fav; persist(); paintCount(true); render();
+  if (favSync) cloudDo(()=>cloudSetFav(i));
+  if (btn){ btn.setAttribute('aria-pressed', i.fav); btn.querySelector('span').textContent = i.fav ? 'Favorite' : 'Add to favorites'; }
+  toast(i.fav ? 'Added to your favorites' : 'Removed from favorites', i.fav);
+}
+function addWish(w){
+  state.wish.unshift(w); persist(); paintCount(true); render();
+  if (wishSync) cloudDo(()=>cloudAddWishes([w]).then(persist));
+  toast('Saved to your wishlist', true);
+}
+function removeWish(id){
+  const w = state.wish.find(x=>x.id===id); if (!w) return;
+  state.wish = state.wish.filter(x=>x.id!==id); persist(); paintCount(); render();
+  if (wishSync) cloudDo(()=>cloudRemove('wishlist_items', [id], [w.photo]));
+}
+async function wishBought(id){
+  const w = state.wish.find(x=>x.id===id); if (!w) return;
+  addSheet(undefined, w);
+  if (w.img){
+    const blob = await fetch(w.img).then(r=>r.blob()).catch(()=>null);
+    if (blob && draft?.fromWish === id) takeAddFile(new File([blob], 'wish.jpg', {type:blob.type || 'image/jpeg'}));
+  }
+}
 function setGuide(v){
   if (!state.profile) return;
   state.profile.guide = v; persist();
@@ -1185,7 +1278,7 @@ function detailSheet(id){
   const i = byId(id); if(!i) return;
   openSheet(`<div class="preview">${visual(i)}</div><h2>${esc(i.name)}</h2>
     <div class="tags" style="margin:10px 0 18px"><span class="tag">${CAT_ONE[i.category]||''}</span><span class="tag"><span class="dot" style="background:${esc(i.hex)}"></span>${esc(i.color)}</span>${i.style?`<span class="tag">${esc(i.style)}</span>`:''}${(i.occasions||[]).map(o=>`<span class="tag">${esc((OCCASIONS.find(x=>x[0]===o)||[])[1]||o)}</span>`).join('')}</div>
-    <div class="row"><button class="btn" data-styleitem="${i.id}">${ICON.spark}Style this piece</button><button class="btn ghost danger" data-del="${i.id}">Remove</button></div>`);
+    <div class="row"><button class="btn" data-styleitem="${i.id}">${ICON.spark}Style this piece</button><button class="btn ghost favbtn" data-fav="${i.id}" aria-pressed="${!!i.fav}">${ICON.heart}<span>${i.fav ? 'Favorite' : 'Add to favorites'}</span></button><button class="btn ghost danger" data-del="${i.id}">Remove</button></div>`);
 }
 
 /* ---------- Sign up + onboarding ---------- */
@@ -1446,7 +1539,7 @@ async function checkCode(){
     setTimeout(()=>{ if (!ob) return;
       if (acc.onboarded){
         const a = testAuth && testAccounts()[acc.email];
-        if (a?.items){ state.items = a.items; state.saved = a.saved || []; state.results = null; paintCount(); }
+        if (a?.items){ state.items = a.items; state.saved = a.saved || []; state.wish = a.wish || []; state.results = null; paintCount(); }
         return signInAs(acc);
       }
       // Whatever the button said, someone who hasn't finished onboarding continues it here.
@@ -1606,8 +1699,8 @@ document.addEventListener('click', async e=>{
       // Don't leave an account's wardrobe on a shared device after signing out.
       // (A test-mode account keeps its wardrobe with its test account, like a real account keeps it in Supabase.)
       const p = state.profile;
-      if (p?.test) saveTestAccount(p.email, {items:state.items, saved:state.saved});
-      if (cloud || (p && !p.guest)){ cloud = null; state.items = DEMO.map(x=>({...x})); state.saved = []; state.results = null; render(); paintCount(); }
+      if (p?.test) saveTestAccount(p.email, {items:state.items, saved:state.saved, wish:state.wish});
+      if (cloud || (p && !p.guest)){ cloud = null; state.items = DEMO.map(x=>({...x})); state.saved = []; state.wish = []; state.results = null; render(); paintCount(); }
       if (sample === serverAI){ sample = null; canImages = false; paintAI(); }
       sb?.auth.signOut(); viewer = {name:'', email:'', avatar:''}; state.profile=null; persist(); closeSheet(); setTimeout(()=>startOnboarding('email'), 250); return;
     }
@@ -1618,6 +1711,25 @@ document.addEventListener('click', async e=>{
   if (a.act==='guidehide'){ const all = starterState().n === STARTER.length; setGuide('off'); render(); return all ? undefined : toast('Guide hidden. Add pieces anytime with “Add item”.'); }
   if (a.act==='firststyle'){ state.mode='occasion'; state.results=null; state.error=''; go('style'); return runStyle(); }
   if (a.act==='nosamples') return removeSamples();
+  if (a.fav) return toggleFav(a.fav, t);
+  if (a.savedtab){ state.savedTab = a.savedtab; return render(); }
+  if (a.wishidea){
+    const on = state.wish.find(w=>w.source==='idea' && w.name===a.wishidea);
+    if (on){ removeWish(on.id); return toast('Removed from your wishlist'); }
+    const b = ideas().find(x=>x.name===a.wishidea); if (!b) return;
+    return addWish({id:'w'+Date.now().toString(36), source:'idea', name:b.name, category:b.category, kind:b.kind, color:b.color, hex:b.hex, pattern:b.pattern});
+  }
+  if (a.act==='wishfind' && state.find && !state.find.wishId){
+    const f = state.find, w = {id:'w'+Date.now().toString(36), source:'find', name:f.name || `New ${(CAT_ONE[state.findCat] || 'piece').toLowerCase()}`, category:state.findCat || 'top', img:f.img};
+    f.wishId = w.id; return addWish(w);
+  }
+  if (a.wishremove){ removeWish(a.wishremove); return toast('Removed from your wishlist'); }
+  if (a.wishbought) return wishBought(a.wishbought);
+  if (a.wishstyle){
+    const w = state.wish.find(x=>x.id===a.wishstyle); if (!w) return;
+    state.find = {img:w.img, name:w.name, wishId:w.id}; state.findCat = w.category; state.mode = 'find'; state.results = null; state.error = '';
+    return go('style');
+  }
   if (a.act==='foundone'){ state.mode='find'; state.findCat=a.cat; state.results=null; state.error=''; go('style'); return toast('Add a screenshot of the piece you found', true); }
   if (a.act==='editshops') return startOnboarding('shops', true);
   if (a.act==='close') return closeSheet();
