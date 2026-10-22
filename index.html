@@ -397,12 +397,14 @@ function starterState(){
   return {done, n:done.filter(Boolean).length, next:done.indexOf(false), ready:has('shoes') && (has('dress') || (has('top') && has('bottom')))};
 }
 const guideOn = () => !!state.profile && !state.profile.guest && state.profile.guide === 'on';
-// Favorite shops (up to 3, picked in onboarding). Links search the shop's own site, which works in
-// every country and for shops people add themselves; real product cards can replace them later.
+// Favorite shops (up to 3, picked in onboarding). A shop with its own search page links straight to it;
+// the rest search the shop's site on the web, which works in every country and for shops people add themselves.
 const SHOPS = [['Zara','zara.com'],['H&M','hm.com'],['COS','cos.com'],['Mango','mango.com'],['Uniqlo','uniqlo.com'],['Massimo Dutti','massimodutti.com'],
   ['& Other Stories','stories.com'],['Arket','arket.com'],['ASOS','asos.com'],['Reformation','thereformation.com'],['Aritzia','aritzia.com'],['Everlane','everlane.com']];
 const SHOP_SITE = Object.fromEntries(SHOPS);
-const shopLink = (shop, q) => 'https://www.google.com/search?q=' + encodeURIComponent(SHOP_SITE[shop] ? `${q} site:${SHOP_SITE[shop]}` : `${shop} ${q}`);
+const SHOP_SEARCH = {'Zara':'https://www.zara.com/gr/en/search?searchTerm='};   // Zara Greece
+const shopLink = (shop, q) => SHOP_SEARCH[shop] ? SHOP_SEARCH[shop] + encodeURIComponent(q)
+  : 'https://www.google.com/search?q=' + encodeURIComponent(SHOP_SITE[shop] ? `${q} site:${SHOP_SITE[shop]}` : `${shop} ${q}`);
 const anyShopLink = q => 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q);
 // Versatile pieces the app can suggest when they'd make the most new outfits with what someone owns.
 const BASICS = [
