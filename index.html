@@ -402,7 +402,19 @@ const guideOn = () => !!state.profile && !state.profile.guest && state.profile.g
 const SHOPS = [['Zara','zara.com'],['H&M','hm.com'],['COS','cos.com'],['Mango','mango.com'],['Uniqlo','uniqlo.com'],['Massimo Dutti','massimodutti.com'],
   ['& Other Stories','stories.com'],['Arket','arket.com'],['ASOS','asos.com'],['Reformation','thereformation.com'],['Aritzia','aritzia.com'],['Everlane','everlane.com']];
 const SHOP_SITE = Object.fromEntries(SHOPS);
-const SHOP_SEARCH = {'H&M':'https://www2.hm.com/en_gb/search-results.html?q='};   // H&M UK
+// UK search pages, each checked to show results for the search term. COS, Massimo Dutti and Arket
+// ignore a search term in the address, so they keep the web search.
+const SHOP_SEARCH = {
+  'H&M':'https://www2.hm.com/en_gb/search-results.html?q=',
+  'Zara':'https://www.zara.com/uk/en/search?searchTerm=',
+  'Uniqlo':'https://www.uniqlo.com/uk/en/search?q=',
+  'Mango':'https://shop.mango.com/gb/en/search/women?q=',
+  'ASOS':'https://www.asos.com/search/?q=',
+  '& Other Stories':'https://www.stories.com/en-gb/search?q=',
+  'Reformation':'https://www.thereformation.com/search?q=',
+  'Aritzia':'https://www.aritzia.com/intl/en/search?q=',     // international site; no UK site
+  'Everlane':'https://www.everlane.com/search?q=',           // one global site
+};
 const shopLink = (shop, q) => SHOP_SEARCH[shop] ? SHOP_SEARCH[shop] + encodeURIComponent(q)
   : 'https://www.google.com/search?q=' + encodeURIComponent(SHOP_SITE[shop] ? `${q} site:${SHOP_SITE[shop]}` : `${shop} ${q}`);
 const anyShopLink = q => 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q);
