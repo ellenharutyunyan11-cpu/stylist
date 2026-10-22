@@ -609,8 +609,13 @@ async function cutout(dataUrl){
   const T = Math.min(55, Math.max(18, spread*2.5 + 14));
   // Not a plain background (patterned sheet, busy room): the edges aren't mostly one color, so keep the photo.
   if (spread > 24 || border.filter(p=>dist(p) < T).length < border.length * .75) return null;
-  // Neighbours with almost the same color also count, so soft shadows and light gradients go too.
+  // Soft shadows go too: the background color, only darker, reached through a smooth change.
+  // (Lighter areas or other colors never count, so light parts of the garment stay.)
   const near = (a,b) => Math.abs(px[a*4]-px[b*4]) + Math.abs(px[a*4+1]-px[b*4+1]) + Math.abs(px[a*4+2]-px[b*4+2]) < 18;
+  const shade = q => {
+    const r = [0,1,2].map(k=>(px[q*4+k] + 1) / (bg[k] + 1)), m = (r[0] + r[1] + r[2]) / 3;
+    return m > .4 && m < 1 && Math.max(...r.map(v=>Math.abs(v - m))) < .07;
+  };
   const isBg = new Uint8Array(n), queue = new Int32Array(n); let head = 0, tail = 0;
   for (const p of border) if (!isBg[p] && dist(p) < T){ isBg[p] = 1; queue[tail++] = p; }
   while (head < tail){
@@ -618,10 +623,23 @@ async function cutout(dataUrl){
     for (const q of [p-w, p+w, col > 0 ? p-1 : -1, col < w-1 ? p+1 : -1]){
       if (q < 0 || q >= n || isBg[q]) continue;
       const dq = dist(q);
-      if (dq < T || (dq < T*1.8 && near(p, q))){ isBg[q] = 1; queue[tail++] = q; }
+      if (dq < T || (near(p, q) && shade(q))){ isBg[q] = 1; queue[tail++] = q; }
     }
   }
-  const removed = tail / n;
+  // Background showing through a gap (inside a bag handle, between sleeve and body) can't be reached from the
+  // edges. Clear enclosed patches of the background color too, when they're big enough not to be a detail.
+  const seen = new Uint8Array(n);
+  for (let s=0; s<n; s++){
+    if (isBg[s] || seen[s] || dist(s) >= T*.9) continue;
+    let h2 = 0, t2 = 0; seen[s] = 1; queue[t2++] = s;
+    while (h2 < t2){
+      const p = queue[h2++], col = p % w;
+      for (const q of [p-w, p+w, col > 0 ? p-1 : -1, col < w-1 ? p+1 : -1])
+        if (q >= 0 && q < n && !isBg[q] && !seen[q] && dist(q) < T*.9){ seen[q] = 1; queue[t2++] = q; }
+    }
+    if (t2 >= n * .004) for (let k=0; k<t2; k++) isBg[queue[k]] = 1;
+  }
+  let removed = 0; for (let p=0; p<n; p++) removed += isBg[p]; removed /= n;
   if (removed < .08 || removed > .92) return null;
   // Keep the piece itself: the biggest shapes left (a pair of shoes is two). Small specks are dropped;
   // if a lot is scattered around outside them, the background wasn't plain, so keep the photo.
@@ -641,6 +659,15 @@ async function cutout(dataUrl){
   sizes.forEach((sz, id)=>{ if (id && sz >= biggest*.15){ keep[id] = 1; kept += sz; } });
   if (kept < fgTotal * .85) return null;
   for (let p=0; p<n; p++) if (!isBg[p] && !keep[label[p]]) isBg[p] = 1;
+  // A clean cutout crosses between background and garment only a few times per row (two legs, a handle).
+  // A shredded one (pleats or folds the same color as the background) crosses many times: keep the photo.
+  let rows = 0, shredded = 0;
+  for (let y=0; y<h; y++){
+    let cross = 0, any = 0;
+    for (let xx=1; xx<w; xx++){ const a = isBg[y*w + xx]; if (a !== isBg[y*w + xx - 1]) cross++; if (!a) any = 1; }
+    if (any){ rows++; if (cross > 6) shredded++; }
+  }
+  if (shredded > rows * .12) return null;
   // Soft 1px edge: alpha is the share of foreground pixels around each pixel.
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y=0; y<h; y++) for (let xx=0; xx<w; xx++){
@@ -660,6 +687,48 @@ async function cutout(dataUrl){
   o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
   const webp = o.toDataURL('image/webp', .9);
   return webp.startsWith('data:image/webp') ? webp : o.toDataURL('image/png');
+}
+// Main color of a piece: the biggest group of similar colors on the garment itself (the cutout,
+// or the middle of the photo when the background stayed), named after the nearest everyday color.
+const COLOR_NAMES = [['black','#141414'],['charcoal','#3a3d42'],['grey','#9a9a9e'],['white','#f6f6f4'],['cream','#efe6d2'],['beige','#d6c3a3'],
+  ['khaki','#b5a46a'],['camel','#b88a5c'],['tan','#a9774b'],['brown','#6b4a32'],['navy','#22304f'],['denim','#5d7fa3'],['blue','#2f6fd6'],['light blue','#a8c8e8'],
+  ['olive','#6c6f48'],['green','#2f8f4e'],['burgundy','#6e1f2e'],['red','#c8332f'],['pink','#e9a8b8'],['lilac','#b9a7d6'],['purple','#6a3d9a'],['yellow','#e8c547'],['orange','#e07b39']];
+function toLab([r,g,b]){
+  const f = v => (v /= 255) > .04045 ? ((v + .055) / 1.055) ** 2.4 : v / 12.92;
+  const [R,G,B] = [f(r), f(g), f(b)];
+  const xyz = [(R*.4124 + G*.3576 + B*.1805) / .95047, R*.2126 + G*.7152 + B*.0722, (R*.0193 + G*.1192 + B*.9505) / 1.08883];
+  const [X,Y,Z] = xyz.map(v=>v > .008856 ? Math.cbrt(v) : 7.787*v + 16/116);
+  return [116*Y - 16, 500*(X - Y), 200*(Y - Z)];
+}
+const hexRgb = h => [1,3,5].map(i=>parseInt(h.slice(i, i+2), 16));
+const NAMED_LAB = COLOR_NAMES.map(([n,h])=>[n, toLab(hexRgb(h))]);
+async function mainColor(dataUrl, isCutout){
+  const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=dataUrl; });
+  const k = Math.min(1, 64/Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width*k)), h = Math.max(1, Math.round(img.height*k));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', {willReadFrequently:true}); x.drawImage(img, 0, 0, w, h);
+  const px = x.getImageData(0, 0, w, h).data, pts = [];
+  for (let y=0; y<h; y++) for (let xx=0; xx<w; xx++){
+    if (!isCutout && (xx < w*.3 || xx > w*.7 || y < h*.25 || y > h*.75)) continue;
+    const p = (y*w + xx)*4; if (px[p+3] > 200) pts.push([px[p], px[p+1], px[p+2]]);
+  }
+  if (pts.length < 20) return null;
+  // Three groups seeded from dark, middle and light pixels, so folds and highlights get their own.
+  const lum = p => p[0]*.3 + p[1]*.59 + p[2]*.11, sorted = pts.slice().sort((a,b)=>lum(a)-lum(b));
+  let centers = [.2, .5, .8].map(q=>[...sorted[Math.floor(q*(sorted.length-1))]]), groups;
+  for (let it=0; it<8; it++){
+    groups = centers.map(()=>[]);
+    for (const p of pts){
+      let best = 0, bd = Infinity;
+      centers.forEach((cc, j)=>{ const d = (p[0]-cc[0])**2 + (p[1]-cc[1])**2 + (p[2]-cc[2])**2; if (d < bd){ bd = d; best = j; } });
+      groups[best].push(p);
+    }
+    centers = groups.map((g, j)=>g.length ? [0,1,2].map(ch=>g.reduce((s,p)=>s + p[ch], 0) / g.length) : centers[j]);
+  }
+  const main = centers[groups.reduce((bi, g, j, all)=>g.length > all[bi].length ? j : bi, 0)].map(Math.round);
+  const lab = toLab(main);
+  const name = NAMED_LAB.reduce((best, [n, l])=>{ const d = (l[0]-lab[0])**2 + (l[1]-lab[1])**2 + (l[2]-lab[2])**2; return d < best[1] ? [n, d] : best; }, ['', Infinity])[0];
+  return {hex:'#' + main.map(v=>v.toString(16).padStart(2, '0')).join(''), name};
 }
 
 /* ---------- Tabs ---------- */
@@ -930,19 +999,23 @@ async function takeAddFile(file){
   const d0 = draft, cut = await cutout(d0.img).catch(()=>null);
   if (draft !== d0) return;
   if (cut){ Object.assign(draft, {original:draft.img, cutImg:cut, img:cut, cut:true}); paintAdd(); } else draft.cutFailed = true;
+  // Default color from the photo; the AI's answer (when it's available) replaces it below.
+  const mc = await mainColor(cut || d0.img, !!cut).catch(()=>null);
+  if (draft !== d0) return;
+  if (mc) Object.assign(draft, {hex:mc.hex, color:mc.name});
   if (aiOn() && canImages){
     try{
       const r = await sample.json(`The image shows one clothing item (a photo or a shop screenshot). Describe it for a wardrobe app. Reply with only JSON:
 {"name":"short friendly name, e.g. White linen shirt","category":"top|bottom|dress|outerwear|shoes|accessory","color":"main color in 1-3 plain words","hex":"#rrggbb approximate main color","style":"casual|smart|formal|sporty|evening","occasions":["any of: work, dinner, weekend, date, travel"],"isClothing":true}`, {modelTier:'quick', images:[file]});
       if (!draft) return;
       Object.assign(draft, {
-        name:String(r.name||'').slice(0,40), category: CAT_ONE[r.category]?r.category:'top', color:String(r.color||''),
-        hex:/^#[0-9a-f]{6}$/i.test(r.hex||'')?r.hex:'#cccccc', style: STYLES.includes(r.style)?r.style:'casual',
+        name:String(r.name||'').slice(0,40), category: CAT_ONE[r.category]?r.category:draft.category, color:r.color ? String(r.color) : draft.color,
+        hex:/^#[0-9a-f]{6}$/i.test(r.hex||'')?r.hex:draft.hex, style: STYLES.includes(r.style)?r.style:'casual',
         occasions:(Array.isArray(r.occasions)?r.occasions:[]).filter(o=>OCCASIONS.some(x=>x[0]===o)), ai:true,
         msg: r.isClothing===false ? 'This doesn’t look like clothing. You can still add it.' : ''
       });
     }catch(e){ if(!draft) return; draft.msg = aiFail(e)+' Fill in the details below.'; }
-  } else draft.msg = 'Demo mode: fill in the details below.';
+  } else draft.msg = draft.color ? 'Demo mode: we picked the color from your photo. Fill in the rest below.' : 'Demo mode: fill in the details below.';
   if (!draft) return;
   draft.step='edit'; paintAdd();
 }
