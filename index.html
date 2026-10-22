@@ -403,9 +403,10 @@ const SB_KEY = 'sb_publishable_R0QGGx2xRxwneDmEdwZoOw_MWRe_v7F';
 const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
 let googleOn = false;
 fetch(SB_URL + '/auth/v1/settings', {headers:{apikey:SB_KEY}}).then(r=>r.json()).then(s=>{ googleOn = !!s.external?.google; }).catch(()=>{});
-// Test mode: only on this computer (localhost). Codes show on screen, no email is sent and no real account is made.
+// Test mode: off unless switched on, and only on this computer (localhost). Codes show on screen,
+// no email is sent and no real account is made.
 const IS_LOCAL = ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
-let testAuth = IS_LOCAL; try{ if (localStorage.getItem('stylist.authMode') === 'real') testAuth = false; }catch(e){}
+let testAuth = false; try{ testAuth = IS_LOCAL && localStorage.getItem('stylist.authMode') === 'test'; }catch(e){}
 function setTestAuth(on){ testAuth = IS_LOCAL && on; try{ localStorage.setItem('stylist.authMode', on ? 'test' : 'real'); }catch(e){} }
 function modeLine(){
   if (!IS_LOCAL) return '';
