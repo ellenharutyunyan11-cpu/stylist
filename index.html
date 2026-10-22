@@ -124,6 +124,18 @@ button.card:active .tile{transform:scale(.97)}
 .g-row{display:flex;gap:8px;flex-wrap:wrap}
 .tips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
 .starter{display:grid;gap:8px}
+/* Worth adding: pieces that would make the most new outfits, with links to search favorite shops. */
+.ideas{margin-top:40px;display:grid;gap:14px}
+.ideas h2{margin:0;font:700 22px/1.2 var(--display);letter-spacing:-.03em}
+.ideas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.idea{background:var(--surface);border-radius:20px;padding:14px;box-shadow:var(--shadow);display:grid;gap:12px;align-content:start}
+.idea-top{display:flex;gap:12px;align-items:center}
+.idea-top .tile{flex:none;width:76px;border-radius:14px}
+.idea-top .tile svg{width:80%;height:80%}
+.idea-txt{display:grid;gap:3px;min-width:0;font-size:15px}
+.idea-shops{display:flex;flex-wrap:wrap;gap:6px}
+.idea-shops .chip{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
+.idea .link{justify-self:start}
 .starter > div{display:flex;align-items:center;gap:12px;padding:10px;border-radius:16px;background:var(--surface);box-shadow:var(--shadow);animation:rise .5s var(--spring) both}
 .starter b{display:block;font-size:15px}
 .starter .d{color:var(--muted);font-size:13px}
@@ -385,6 +397,51 @@ function starterState(){
   return {done, n:done.filter(Boolean).length, next:done.indexOf(false), ready:has('shoes') && (has('dress') || (has('top') && has('bottom')))};
 }
 const guideOn = () => !!state.profile && !state.profile.guest && state.profile.guide === 'on';
+// Favorite shops (up to 3, picked in onboarding). Links search the shop's own site, which works in
+// every country and for shops people add themselves; real product cards can replace them later.
+const SHOPS = [['Zara','zara.com'],['H&M','hm.com'],['COS','cos.com'],['Mango','mango.com'],['Uniqlo','uniqlo.com'],['Massimo Dutti','massimodutti.com'],
+  ['& Other Stories','stories.com'],['Arket','arket.com'],['ASOS','asos.com'],['Reformation','thereformation.com'],['Aritzia','aritzia.com'],['Everlane','everlane.com']];
+const SHOP_SITE = Object.fromEntries(SHOPS);
+const shopLink = (shop, q) => 'https://www.google.com/search?q=' + encodeURIComponent(SHOP_SITE[shop] ? `${q} site:${SHOP_SITE[shop]}` : `${shop} ${q}`);
+const anyShopLink = q => 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q);
+// Versatile pieces the app can suggest when they'd make the most new outfits with what someone owns.
+const BASICS = [
+  {name:'White tee', category:'top', kind:'tee', color:'white', hex:'#f4f4f2'},
+  {name:'Striped tee', category:'top', kind:'tee', color:'cream', hex:'#f6f3ea', pattern:'stripe', print:true},
+  {name:'White shirt', category:'top', kind:'shirt', color:'white', hex:'#f3f1ec'},
+  {name:'Black turtleneck', category:'top', kind:'knit', color:'black', hex:'#1b1b1d'},
+  {name:'Grey knit', category:'top', kind:'knit', color:'grey', hex:'#9a9a9e'},
+  {name:'Straight jeans', category:'bottom', kind:'jeans', color:'denim', hex:'#5d7fa3'},
+  {name:'Black trousers', category:'bottom', kind:'trousers', color:'black', hex:'#232325'},
+  {name:'Beige trousers', category:'bottom', kind:'trousers', color:'beige', hex:'#d6c3a3'},
+  {name:'Midi skirt', category:'bottom', kind:'skirt', color:'cream', hex:'#e8dcc8'},
+  {name:'Black slip dress', category:'dress', kind:'dress', color:'black', hex:'#1d1d1f'},
+  {name:'Navy blazer', category:'outerwear', kind:'blazer', color:'navy', hex:'#22304f'},
+  {name:'Camel blazer', category:'outerwear', kind:'blazer', color:'camel', hex:'#b88a5c'},
+  {name:'Trench coat', category:'outerwear', kind:'coat', color:'beige', hex:'#cdb894'},
+  {name:'White sneakers', category:'shoes', kind:'sneaker', color:'white', hex:'#f7f7f5'},
+  {name:'Black loafers', category:'shoes', kind:'loafer', color:'black', hex:'#1d1d1f'},
+  {name:'Tan shoulder bag', category:'accessory', kind:'bag', color:'tan', hex:'#a9774b'},
+  {name:'Black tote bag', category:'accessory', kind:'bag', color:'black', hex:'#1b1b1b'},
+];
+// How many complete outfits (top + bottom, or a dress, plus shoes) a wardrobe makes; layers and bags add variations.
+function outfitCount(n){ const base = (n.top*n.bottom + n.dress) * n.shoes; return base + base*n.outerwear*.6 + base*Math.min(n.accessory, 2)*.3; }
+function ideas(){
+  const items = state.items, p = state.profile || {}, n = {};
+  ['top','bottom','dress','outerwear','shoes','accessory'].forEach(c=>n[c] = items.filter(i=>i.category===c).length);
+  const now = outfitCount(n), loved = (p.colors||[]).map(c=>c.toLowerCase()), avoid = p.avoid || [];
+  const owned = b => items.some(i=>i.category===b.category && String(i.color||'').toLowerCase().includes(b.color));
+  const scored = BASICS.filter(b=>!owned(b) && !(b.print && avoid.includes('Bold prints'))).map(b=>{
+    const gain = outfitCount({...n, [b.category]:n[b.category]+1}) - now;
+    return {...b, gain:Math.round(gain), score:gain * (loved.some(c=>b.color.includes(c) || c.includes(b.color)) ? 1.3 : 1) + (n[b.category] ? 0 : .5)};
+  }).filter(b=>b.gain > 0 || !n[b.category]).sort((a,b)=>b.score - a.score);
+  const picks = [];
+  for (const b of scored){ if (!picks.some(x=>x.category===b.category)) picks.push(b); if (picks.length === 3) break; }
+  return picks.map(b=>{
+    const goes = items.filter(i=>({top:['bottom','shoes'], bottom:['top','shoes'], dress:['shoes','outerwear'], outerwear:['top','bottom','dress'], shoes:['top','bottom','dress'], accessory:['top','dress']})[b.category].includes(i.category));
+    return {...b, goes:goes.slice(0, 3).map(i=>i.name)};
+  });
+}
 const PHOTO_TIPS = ['Plain background','One piece per photo','Good daylight','Lay it flat or hang it up'].map(t=>`<span class="tag">${t}</span>`).join('');
 const CATS = {top:'Tops',bottom:'Bottoms',dress:'Dresses',outerwear:'Layers',shoes:'Shoes',accessory:'Bags & more'};
 const CAT_ONE = {top:'Top',bottom:'Bottom',dress:'Dress',outerwear:'Layer',shoes:'Shoes',accessory:'Accessory'};
@@ -419,7 +476,7 @@ const firstName = m => (m.first_name || String(m.full_name || m.name || '').spli
 const lastName = m => (m.last_name || String(m.full_name || m.name || '').split(' ').slice(1).join(' ') || '').slice(0,40);
 function profileFromUser(u){
   const m = u.user_metadata || {};
-  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), last:lastName(m), email:u.email||'', vibes:m.vibes||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guide:m.guide==='on' ? 'on' : 'off', guest:false};
+  return {provider: u.app_metadata?.provider==='google' ? 'google' : 'email', name:firstName(m), last:lastName(m), email:u.email||'', vibes:m.vibes||[], shops:m.shops||[], occasions:m.occasions||[], colors:m.colors||[], avoid:m.avoid||[], onboarded:!!m.onboarded, guide:m.guide==='on' ? 'on' : 'off', guest:false};
 }
 function authErr(e, fallback){
   const c = e?.code || '', s = e?.status;
@@ -784,6 +841,20 @@ function guideHTML(){
         ${done[k] ? '' : `<button class="btn sm${k === next ? '' : ' ghost'}" data-guide="${k}">Add</button>`}</li>`).join('')}</ol>`}
   </div>`;
 }
+function ideasHTML(){
+  const list = ideas(); if (!list.length) return '';
+  const shops = (state.profile?.shops || []).slice(0, 3), signed = state.profile && !state.profile.guest;
+  return `<section class="ideas">
+    <div><h2>Worth adding</h2><p class="sub">Pieces that would make the most new outfits with what you own.</p></div>
+    <div class="ideas-grid">${list.map(b=>`<div class="idea">
+      <div class="idea-top"><div class="tile">${garment(b.kind, b.hex, b.pattern)}</div>
+        <div class="idea-txt"><b>${esc(b.name)}</b><span class="cmeta" style="margin:0">${b.gain > 0 ? `About ${b.gain} new outfit${b.gain > 1 ? 's' : ''}` : 'Fills a gap in your wardrobe'}${b.goes.length ? ` · goes with your ${b.goes.map(esc).join(', ')}` : ''}</span></div></div>
+      <div class="idea-shops">${shops.length ? shops.map(s=>`<a class="chip" href="${shopLink(s, b.name.toLowerCase())}" target="_blank" rel="noopener">${esc(s)} ↗</a>`).join('') : `<a class="chip" href="${anyShopLink(b.name.toLowerCase())}" target="_blank" rel="noopener">Search online ↗</a>`}</div>
+      <button class="link" data-act="foundone" data-cat="${b.category}">Found one? Style it with your clothes</button>
+    </div>`).join('')}</div>
+    ${!shops.length && signed ? `<p class="cmeta">Search your favorite shops directly. <button class="link" data-act="editshops">Add your shops</button></p>` : ''}
+  </section>`;
+}
 function viewWardrobe(){
   const cats = ['all', ...Object.keys(CATS).filter(c=>state.items.some(i=>i.category===c))];
   const list = state.items.filter(i=>state.filter==='all'||i.category===state.filter);
@@ -800,6 +871,7 @@ function viewWardrobe(){
       ${list.map(i=>`<button class="card${i._new?' new':''}" data-item="${i.id}"><div class="tile">${visual(i)}</div><span class="cname">${esc(i.name)}</span><span class="cmeta"><span class="dot" style="background:${esc(i.hex||'#999')}"></span>${esc(i.color)}</span></button>`).join('')}
     </div>
     ${list.length===0 && !(guide && state.filter==='all')?`<div class="empty"><b>Nothing here yet</b><span>${state.filter==='all' ? 'Add a photo of something you own.' : 'Add a piece to this category.'}</span></div>`:''}
+    ${state.items.length >= 3 && !(guide && starterState().n < 3) ? ideasHTML() : ''}
     <div class="foot"><button class="link" data-act="reset">Reset to sample wardrobe</button></div>
   </section>`;
 }
@@ -1088,7 +1160,7 @@ const VIBES = [
 ];
 const PALETTE = [['Black','#121212'],['White','#f6f6f4'],['Cream','#efe6d2'],['Beige','#d6c3a3'],['Camel','#b88a5c'],['Brown','#6b4a32'],['Grey','#9a9a9e'],['Navy','#22304f'],['Denim','#5d7fa3'],['Olive','#6c6f48'],['Burgundy','#6e1f2e'],['Red','#c8332f'],['Pink','#e9a8b8'],['Lilac','#b9a7d6']];
 const AVOID = ['Heels','Tight fits','Short hemlines','Bright colors','Bold prints','Very formal looks'];
-const STEPS = ['name','style','week','colors'];
+const STEPS = ['name','style','week','colors','shops'];
 const OCC_SUB = {work:'Office, meetings', dinner:'Restaurants, friends', weekend:'Errands, coffee, walks', date:'Something a bit special', travel:'Trips and long days out'};
 const OCC_ICON = {
   work:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></svg>',
@@ -1146,6 +1218,7 @@ function meSheet(){
     <div class="sec"><div class="label">Dresses for</div>${tags(p.occasions, o=>`<span class="tag">${esc(occLabel(o))}</span>`)}</div>
     <div class="sec"><div class="label">Favourite colors</div>${tags(p.colors, c=>`<span class="tag"><span class="dot" style="background:${swHex(c)}"></span>${esc(c)}</span>`)}</div>
     <div class="sec"><div class="label">Avoids</div>${tags(p.avoid, a=>`<span class="tag">${esc(a)}</span>`)}</div>
+    <div class="sec"><div class="label">Favorite shops</div>${tags(p.shops || [], s=>`<span class="tag">${esc(s)}</span>`)}</div>
     ${themeHTML()}
     <div class="row" style="margin-top:6px"><button class="btn" data-act="editprefs">Edit preferences</button><button class="btn ghost danger" data-act="signout">Sign out</button></div>`);
 }
@@ -1159,7 +1232,7 @@ const GLOGO = 'images/google.png';
 let ob = null;
 function startOnboarding(step, editing){
   const p = state.profile && !state.profile.guest ? state.profile : {};
-  ob = {step, phase:'email', known:false, dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', last:p.last||'', email:p.email||'', guide:p.guide, vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
+  ob = {step, phase:'email', known:false, dir:1, editing:!!editing, p:{provider:p.provider||'email', name:p.name||'', last:p.last||'', email:p.email||'', guide:p.guide, shops:[...(p.shops||[])], vibes:[...(p.vibes||[])], occasions:[...(p.occasions||[])], colors:[...(p.colors||[])], avoid:[...(p.avoid||[])]}};
   const el = $('#auth'); el.classList.remove('leave'); el.hidden = false; document.body.classList.add('locked');
   paintAuth();
 }
@@ -1178,7 +1251,7 @@ function saveProfile(){
   if (p.occasions.length) state.occasion = p.occasions[0];
   persist();
   if (testAuth) return saveTestAccount(p.email, p);
-  sb?.auth.updateUser({data:{first_name:p.name, last_name:p.last, vibes:p.vibes, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true, ...(p.guide ? {guide:p.guide} : {})}})
+  sb?.auth.updateUser({data:{first_name:p.name, last_name:p.last, vibes:p.vibes, shops:p.shops, occasions:p.occasions, colors:p.colors, avoid:p.avoid, onboarded:true, ...(p.guide ? {guide:p.guide} : {})}})
     .then(({error})=>{ if (error) toast('Couldn’t save your style to your account. Try again later.'); });
 }
 const MARK = '<span class="su-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="var(--on-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a2 2 0 0 1 2 2c0 1-1 1.6-2 2.3V9l8.6 6.2a1.6 1.6 0 0 1-1 2.8H4.4a1.6 1.6 0 0 1-1-2.8L12 9"/></svg></span>';
@@ -1247,6 +1320,12 @@ function paintAuth(){
     <div class="vibes">${VIBES.map(v=>`<button class="vibe" data-vibe="${v.k}" aria-pressed="${p.vibes.includes(v.k)}"><span class="ck">${ICON.check}</span><span class="pics"><img src="${PHOTOS[v.p[0]]}" alt=""><img src="${PHOTOS[v.p[1]]}" alt=""></span><b>${v.n}</b><span class="vd">${v.d}</span></button>`).join('')}</div>`;
   if (o.step === 'week') body = `${eyebrow}<h1 class="big">What do you dress for most?</h1><p class="sub">Pick all that apply. We’ll start there.</p>
     <div class="opts">${OCCASIONS.map(([k,v])=>`<button class="opt" data-wk="${k}" aria-pressed="${p.occasions.includes(k)}"><span class="oi">${OCC_ICON[k]}</span><span><b>${v}</b><span class="od">${OCC_SUB[k]}</span></span><span class="ck">${ICON.check}</span></button>`).join('')}</div>`;
+  if (o.step === 'shops'){
+    const custom = p.shops.filter(s=>!SHOP_SITE[s]);
+    body = `${eyebrow}<h1 class="big">Your favorite shops</h1><p class="sub" id="shopHint">Pick up to 3. We’ll suggest pieces worth adding and search these shops for them.</p>
+    <div class="chips">${[...SHOPS.map(s=>s[0]), ...custom].map(s=>`<button class="chip" data-shop="${esc(s)}" aria-pressed="${p.shops.includes(s)}">${esc(s)}</button>`).join('')}</div>
+    <form id="shopForm" class="row" novalidate style="margin-top:6px"><input class="field" id="shopOther" maxlength="40" placeholder="Another shop" style="flex:1;min-width:0"><button class="btn sm ghost" type="submit">Add</button></form>`;
+  }
   if (o.step === 'colors') body = `${eyebrow}<h1 class="big">Colors you love</h1><p class="sub">Tap any that feel like you.</p>
     <div class="swatches">${PALETTE.map(([n,h])=>`<button class="sw" data-col="${n}" aria-pressed="${p.colors.includes(n)}"><i style="background:${h}"><svg viewBox="0 0 24 24" fill="none" stroke="${lum(h)>.55?'#000':'#fff'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></i>${n}</button>`).join('')}</div>
     <div style="margin-top:14px"><div class="label">Anything to avoid?</div><div class="chips">${AVOID.map(a=>`<button class="chip" data-av="${a}" aria-pressed="${p.avoid.includes(a)}">${a}</button>`).join('')}</div></div>`;
@@ -1308,7 +1387,7 @@ async function testVerify(v){
   await wait(600);
   if (v !== ob.code) return {error:{code:'otp_expired'}};
   const a = testAccounts()[ob.p.email];
-  const meta = a ? {first_name:a.name, last_name:a.last, vibes:a.vibes, occasions:a.occasions, colors:a.colors, avoid:a.avoid, guide:a.guide, onboarded:true} : {};
+  const meta = a ? {first_name:a.name, last_name:a.last, vibes:a.vibes, shops:a.shops, occasions:a.occasions, colors:a.colors, avoid:a.avoid, guide:a.guide, onboarded:true} : {};
   return {data:{user:{email:ob.p.email, user_metadata:meta, app_metadata:{provider:'email'}}}};
 }
 async function checkCode(){
@@ -1405,6 +1484,15 @@ function nextStep(){
 $('#auth').addEventListener('submit', e=>{
   e.preventDefault(); if (!ob) return;
   if (e.target.id === 'nameForm') return nextStep();
+  if (e.target.id === 'shopForm'){
+    const v = $('#shopOther').value.trim().replace(/\s+/g, ' ').slice(0, 40); if (!v) return;
+    const known = [...SHOPS.map(s=>s[0]), ...ob.p.shops].find(s=>s.toLowerCase() === v.toLowerCase()) || v[0].toUpperCase() + v.slice(1);
+    if (!ob.p.shops.includes(known)){
+      if (ob.p.shops.length >= 3){ nudge(e.target); const h = $('#shopHint'); h.classList.add('flash'); setTimeout(()=>h.classList.remove('flash'), 1000); return; }
+      ob.p.shops.push(known);
+    }
+    ob.dir = 0; return paintAuth();
+  }
   if (e.target.id !== 'emailForm') return;
   if (ob.phase === 'code') return checkCode();
   const email = $('#email').value.trim().toLowerCase(), err = $('#authErr');
@@ -1459,6 +1547,10 @@ $('#auth').addEventListener('click', e=>{
   if (d.wk) return toggleIn('occasions', d.wk, t);
   if (d.col) return toggleIn('colors', d.col, t);
   if (d.av) return toggleIn('avoid', d.av, t);
+  if (d.shop){
+    if (!ob.p.shops.includes(d.shop) && ob.p.shops.length >= 3){ nudge(t); const h = $('#shopHint'); h.classList.add('flash'); setTimeout(()=>h.classList.remove('flash'), 1000); return; }
+    return toggleIn('shops', d.shop, t);
+  }
 });
 
 /* ---------- Events ---------- */
@@ -1486,6 +1578,8 @@ document.addEventListener('click', async e=>{
   if (a.act==='guidehide'){ const all = starterState().n === STARTER.length; setGuide('off'); render(); return all ? undefined : toast('Guide hidden. Add pieces anytime with “Add item”.'); }
   if (a.act==='firststyle'){ state.mode='occasion'; state.results=null; state.error=''; go('style'); return runStyle(); }
   if (a.act==='nosamples') return removeSamples();
+  if (a.act==='foundone'){ state.mode='find'; state.findCat=a.cat; state.results=null; state.error=''; go('style'); return toast('Add a screenshot of the piece you found', true); }
+  if (a.act==='editshops') return startOnboarding('shops', true);
   if (a.act==='close') return closeSheet();
   if (a.act==='saveItem') return saveItem();
   if (a.act==='togglecut' && draft?.original){
