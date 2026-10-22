@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Stylist: outfit ideas from clothes you already own. Static page plus one Netlify function for AI.",
   "dependencies": {
-    "@anthropic-ai/sdk": "0.132.0"
+    "@anthropic-ai/sdk": "0.132.0",
+    "@google/genai": "2.28.0"
   }
 }
