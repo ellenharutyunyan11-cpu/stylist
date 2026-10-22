@@ -402,7 +402,7 @@ const guideOn = () => !!state.profile && !state.profile.guest && state.profile.g
 const SHOPS = [['Zara','zara.com'],['H&M','hm.com'],['COS','cos.com'],['Mango','mango.com'],['Uniqlo','uniqlo.com'],['Massimo Dutti','massimodutti.com'],
   ['& Other Stories','stories.com'],['Arket','arket.com'],['ASOS','asos.com'],['Reformation','thereformation.com'],['Aritzia','aritzia.com'],['Everlane','everlane.com']];
 const SHOP_SITE = Object.fromEntries(SHOPS);
-const SHOP_SEARCH = {'Zara':'https://www.zara.com/gr/en/search?searchTerm='};   // Zara Greece
+const SHOP_SEARCH = {'H&M':'https://www2.hm.com/el_gr/search-results.html?q='};   // H&M Greece (Greek; there's no English Greece site)
 const shopLink = (shop, q) => SHOP_SEARCH[shop] ? SHOP_SEARCH[shop] + encodeURIComponent(q)
   : 'https://www.google.com/search?q=' + encodeURIComponent(SHOP_SITE[shop] ? `${q} site:${SHOP_SITE[shop]}` : `${shop} ${q}`);
 const anyShopLink = q => 'https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(q);
