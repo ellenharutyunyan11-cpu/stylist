@@ -689,6 +689,15 @@ async function cutout(dataUrl){
   const webp = o.toDataURL('image/webp', .9);
   return webp.startsWith('data:image/webp') ? webp : o.toDataURL('image/png');
 }
+// The cutout on a white square, like a shop product photo: centered with some space around it.
+async function onWhite(cutUrl){
+  const img = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=cutUrl; });
+  const side = Math.round(Math.max(img.width, img.height) * 1.18);
+  const c = document.createElement('canvas'); c.width = c.height = side;
+  const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, side, side);
+  x.drawImage(img, Math.round((side - img.width)/2), Math.round((side - img.height)/2));
+  return c.toDataURL('image/jpeg', .88);
+}
 // Main color of a piece: the biggest group of similar colors on the garment itself (the cutout,
 // or the middle of the photo when the background stayed), named after the nearest everyday color.
 const COLOR_NAMES = [['black','#141414'],['charcoal','#3a3d42'],['grey','#9a9a9e'],['white','#f6f6f4'],['cream','#efe6d2'],['beige','#d6c3a3'],
@@ -975,8 +984,8 @@ function addBody(){
       <span class="ic">${ICON.photo}</span><span><b>Choose a photo</b><span>Or drag one here, or paste</span></span></label>
       <input class="sr" type="file" id="addFile" accept="image/*">`;
   const d = draft;
-  return `<div class="preview" id="addPreview">${d.img?`<img${d.cut?' class="cut"':''} src="${d.img}" alt="">`:''}${d.step==='reading'?'<div class="scan"></div>':''}</div>
-    ${d.step!=='reading' && d.original ? `<div class="row" style="justify-content:center;margin:-4px 0 12px"><button class="link" data-act="togglecut" id="cutToggle">${d.cut ? 'Keep the original background' : 'Remove the background'}</button></div>`
+  return `<div class="preview" id="addPreview">${d.img?`<img src="${d.img}" alt="">`:''}${d.step==='reading'?'<div class="scan"></div>':''}</div>
+    ${d.step!=='reading' && d.original ? `<div class="row" style="justify-content:center;margin:-4px 0 12px"><button class="link" data-act="togglecut" id="cutToggle">${d.cut ? 'Keep the original background' : 'Use a white background'}</button></div>`
       : d.step!=='reading' && d.cutFailed ? `<p class="cmeta" style="text-align:center;margin:-4px 0 12px">Couldn’t separate the piece from the background. A plainer background works best.</p>` : ''}
     ${d.step==='reading' ? `<div class="thinking" style="justify-content:center;margin:0"><span class="dots"><i></i><i></i><i></i></span>Looking at your piece</div>` : `
     ${d.msg?`<div class="note" style="margin-bottom:14px">${esc(d.msg)}</div>`:''}
@@ -999,8 +1008,10 @@ async function takeAddFile(file){
   paintAdd();
   const d0 = draft, cut = await cutout(d0.img).catch(()=>null);
   if (draft !== d0) return;
-  if (cut){ Object.assign(draft, {original:draft.img, cutImg:cut, img:cut, cut:true}); paintAdd(); } else draft.cutFailed = true;
-  // Default color from the photo; the AI's answer (when it's available) replaces it below.
+  const white = cut && await onWhite(cut).catch(()=>null);
+  if (draft !== d0) return;
+  if (white){ Object.assign(draft, {original:draft.img, cutImg:white, img:white, cut:true}); paintAdd(); } else draft.cutFailed = true;
+  // Default color from the garment itself; the AI's answer (when it's available) replaces it below.
   const mc = await mainColor(cut || d0.img, !!cut).catch(()=>null);
   if (draft !== d0) return;
   if (mc) Object.assign(draft, {hex:mc.hex, color:mc.name});
@@ -1023,7 +1034,7 @@ async function takeAddFile(file){
 function saveItem(){
   const d = draft; d.name = $('#fName').value.trim(); d.category=$('#fCat').value; d.color=$('#fColor').value.trim(); d.hex=$('#fHex').value;
   if (!d.name){ $('#fName').focus(); return toast('Give it a name'); }
-  const item = {id:'u'+Date.now().toString(36), name:d.name, category:d.category, color:d.color||'—', hex:d.hex, style:d.style, occasions:d.occasions.length?d.occasions:['weekend'], img:d.img, cut:!!d.cut, _new:true};
+  const item = {id:'u'+Date.now().toString(36), name:d.name, category:d.category, color:d.color||'—', hex:d.hex, style:d.style, occasions:d.occasions.length?d.occasions:['weekend'], img:d.img, _new:true};
   const before = guideOn() && starterState();
   state.items.unshift(item); persist(); closeSheet();
   cloudDo(()=>cloudAddItems([item]).then(persist));
@@ -1477,8 +1488,8 @@ document.addEventListener('click', async e=>{
   if (a.act==='saveItem') return saveItem();
   if (a.act==='togglecut' && draft?.original){
     draft.cut = !draft.cut; draft.img = draft.cut ? draft.cutImg : draft.original;
-    const im = $('#addPreview img'); im.src = draft.img; im.classList.toggle('cut', draft.cut);
-    t.textContent = draft.cut ? 'Keep the original background' : 'Remove the background'; return;
+    $('#addPreview img').src = draft.img;
+    t.textContent = draft.cut ? 'Keep the original background' : 'Use a white background'; return;
   }
   if (a.act==='style') return runStyle();
   if (a.act==='reset'){
