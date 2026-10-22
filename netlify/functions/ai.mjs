@@ -25,7 +25,8 @@ export function parseJson(text) {
 }
 
 export default async (req) => {
-  if (req.method === "GET") return reply({ ok: true }); // lets the app check that AI is reachable
+  // Lets the app check that AI is reachable and set up; without a key the app stays in Demo mode.
+  if (req.method === "GET") return reply({ ok: !!process.env.ANTHROPIC_API_KEY });
   if (req.method !== "POST") return reply({ error: "method_not_allowed" }, 405);
 
   // Signed-in Stylist users only, so strangers can't spend the API credit.
@@ -43,6 +44,7 @@ export default async (req) => {
     .slice(0, 2)
     .filter((i) => IMAGE_TYPES.includes(i?.media_type) && typeof i.data === "string" && i.data.length < 2_000_000);
   if (!prompt) return reply({ error: "bad_request" }, 400);
+  if (!process.env.ANTHROPIC_API_KEY) return reply({ error: "ai_not_configured" }, 503);
 
   // Netlify stops a function after roughly 26 seconds, so give up on the API a little before that.
   client ??= new Anthropic({ timeout: 22_000, maxRetries: 0 });
